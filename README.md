@@ -35,6 +35,14 @@ Load ImageNet validation set with blurred face
 wget https://image-net.org/data/ILSVRC/blurred/val_blurred.tar.gz
 ```
 
+## Usage
+
+Coming soon!
+
+## Preprocessor Extraction
+
+Coming soon!
+
 ## Disclaimer
 
 This is not an officially supported Google project.
