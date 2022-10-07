@@ -28,7 +28,7 @@ import torchvision
 
 from extract_prep.attack import attack_dict
 from extract_prep.attack.util import find_preimage, select_targets
-from extract_prep.preprocessing import PREPROCESSING, Sequential
+from extract_prep.preprocessor import PREPROCESSORS, Sequential
 from extract_prep.utils.dataloader import get_dataloader
 from extract_prep.utils.model import PreprocessModel
 
@@ -135,7 +135,7 @@ def main(args, savename):
     if "-" in args["preprocess"]:
         prep_init = Sequential
     else:
-        prep_init = PREPROCESSING[args["preprocess"]]
+        prep_init = PREPROCESSORS[args["preprocess"]]
     preprocess = prep_init(args, input_size=args["orig_size"])
     prep, _, atk_prep, prepare_atk_img = preprocess.get_prep()
 

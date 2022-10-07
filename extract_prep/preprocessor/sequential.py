@@ -18,7 +18,7 @@ from .util import ApplySequence
 class Sequential(BasePreprocess):
     def __init__(self, params, **kwargs):
         super().__init__(params, **kwargs)
-        from extract_prep.preprocessing import PREPROCESSING
+        from extract_prep.preprocessor import PREPROCESSORS
 
         # Get list of preprocessings from params
         preps = params["preprocess"].split("-")
@@ -27,7 +27,7 @@ class Sequential(BasePreprocess):
             input_size = (
                 prep_list[-1].output_size if len(prep_list) > 0 else None
             )
-            prep_list.append(PREPROCESSING[prep](params, input_size=input_size))
+            prep_list.append(PREPROCESSORS[prep](params, input_size=input_size))
 
         prep = [p.prep for p in prep_list]
         inv_prep = [p.inv_prep for p in prep_list][::-1]

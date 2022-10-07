@@ -11,15 +11,21 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-from .base import BasePreprocess, identity
-from .diffjpeg import DiffJPEG
+from .base import BasePreprocess
+from .crop import Crop
+from .jpeg import JPEG
+from .neural import Neural
+from .quantize import Quantize
+from .resize import Resize
+from .resize_opt import ResizeOpt
+from .sequential import Sequential
 
-
-class JPEG(BasePreprocess):
-    def __init__(self, params, **kwargs):
-        super().__init__(params, **kwargs)
-        quality = params["jpeg_quality"]
-        self.prep = DiffJPEG(differentiable=True, quality=quality).cuda()
-        self.inv_prep = identity
-        self.atk_prep = self.prep
-        self.prepare_atk_img = identity
+PREPROCESSORS = {
+    "identity": BasePreprocess,
+    "quantize": Quantize,
+    "resize": Resize,
+    "resize-opt": ResizeOpt,
+    "crop": Crop,
+    "jpeg": JPEG,
+    "neural": Neural,
+}
