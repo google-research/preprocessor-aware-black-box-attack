@@ -13,10 +13,10 @@
 
 from compressai import zoo
 
-from .base import BasePreprocess, identity
+from .base import Preprocessor, _identity
 
 
-class Neural(BasePreprocess):
+class Neural(Preprocessor):
     def __init__(self, params, input_size=None, **kwargs):
         super().__init__(params, input_size=input_size, **kwargs)
         if "cheng2020" in params["neural_model"]:
@@ -45,7 +45,7 @@ class Neural(BasePreprocess):
             return out
 
         self.prep = compress
-        self.inv_prep = identity
+        self.inv_prep = _identity
         self.atk_prep = self.prep
-        self.prepare_atk_img = identity
+        self.prepare_atk_img = _identity
         self.atk_to_orig = self.inv_prep

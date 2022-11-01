@@ -11,11 +11,11 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-from .base import BasePreprocess
+from .base import Preprocessor
 from .util import ApplySequence
 
 
-class Sequential(BasePreprocess):
+class Sequential(Preprocessor):
     def __init__(self, params, **kwargs):
         super().__init__(params, **kwargs)
         from extract_prep.preprocessor import PREPROCESSORS

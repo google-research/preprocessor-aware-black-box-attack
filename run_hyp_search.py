@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,11 +11,13 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Run attack by also sweeping a set of pre-defined hyperparameters."""
+
 import os
 from copy import deepcopy
 from functools import partial
 
-from run_preprocess_attack import parse_args, run_one
+from run_preprocess_attack import parse_args, run_one_setting
 
 print = partial(print, flush=True)
 
@@ -46,7 +48,7 @@ if __name__ == "__main__":
     }
 
     # Run with default hyperparameters once
-    run_one(args)
+    run_one_setting(args)
 
     params = hyp_to_search[args["attack"]]
     for i, hyp in enumerate(params["hyp"]):
@@ -54,4 +56,4 @@ if __name__ == "__main__":
         for val in vals:
             new_args = deepcopy(args)
             new_args[hyp] = val
-            run_one(new_args)
+            run_one_setting(new_args)

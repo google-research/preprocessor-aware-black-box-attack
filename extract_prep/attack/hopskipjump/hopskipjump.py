@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,9 +11,12 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+import torch.nn.functional as F
+
 import foolbox
 import numpy as np
 from foolbox import PyTorchModel
+from typing import Any, Optional
 
 from ..base import Attack
 from .hop_skip_jump import HopSkipJump
@@ -21,7 +24,13 @@ from .hop_skip_jump import HopSkipJump
 
 class HopSkipJumpAttack(Attack):
     def __init__(
-        self, model, args, substract_steps=0, preprocess=None, **kwargs
+        self,
+        model,
+        args,
+        substract_steps=0,
+        preprocess=None,
+        smart_noise: Optional[Any] = None,
+        **kwargs,
     ):
         super().__init__(model, args, **kwargs)
         self.model = PyTorchModel(model, bounds=(0, 1), preprocessing=None)
@@ -48,9 +57,12 @@ class HopSkipJumpAttack(Attack):
             verbose=args["verbose"],
             # stepsize_search='grid_search',
             preprocess=preprocess,
+            smart_noise=smart_noise,
         )
 
     def run(self, imgs, labels, tgt=None, **kwargs):
+        # if labels.ndim == 1:
+        #     labels = F.one_hot(labels, num_classes=1000)
         if tgt is None:
             criteria = foolbox.criteria.Misclassification(labels)
             starting_points = None

@@ -21,11 +21,11 @@ import torch
 import torch.nn.functional as T
 from torchvision import transforms
 
-from .base import BasePreprocess
+from .base import Preprocessor
 from .util import BICUBIC, BILINEAR, NEAREST, ApplySequence
 
 
-class Resize(BasePreprocess):
+class Resize(Preprocessor):
     def __init__(self, params, **kwargs):
         super().__init__(params, **kwargs)
         orig_size = (params["orig_size"], params["orig_size"])

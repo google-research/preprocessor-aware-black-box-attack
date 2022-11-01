@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -13,9 +13,9 @@
 
 # from .rays import RaySAttack
 from .bandit import BanditAttack
-from .bayes import BayesOptAttack
+# from .bayes import BayesOptAttack
 from .boundary import BoundaryAttack
-from .geoda import GeoDAAttack
+# from .geoda import GeoDAAttack
 from .hopskipjump import HopSkipJumpAttack
 from .opt import OptAttack
 from .qeba import QEBA
@@ -25,17 +25,17 @@ from .square import SquareAttack
 from .zoo import ZooAttack
 from .fmn import FMNAttack
 
-attack_dict = {
+ATTACK_DICT = {
     # 'rays': RaySAttack,
     'hsj': HopSkipJumpAttack,
     'simba': SimBAAttack,
-    'geoda': GeoDAAttack,
+    # 'geoda': GeoDAAttack,
     'boundary': BoundaryAttack,
     'square': SquareAttack,
     'zoo': ZooAttack,
     'bandit': BanditAttack,
     'signopt': SignOptAttack,
-    'bayes': BayesOptAttack,
+    # 'bayes': BayesOptAttack,
     'opt': OptAttack,
     'qeba': QEBA,
     'fmn': FMNAttack,

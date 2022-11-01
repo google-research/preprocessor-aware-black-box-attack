@@ -16,7 +16,7 @@ Code is adapted from the original repo
 https://github.com/MadryLab/blackbox-bandits/blob/master/src/main.py
 """
 import torch as ch
-from extract_prep.preprocessing.quantize import Quant
+from extract_prep.preprocessor.quantize import Quant
 from torch.nn.modules import Upsample
 
 from .base import Attack

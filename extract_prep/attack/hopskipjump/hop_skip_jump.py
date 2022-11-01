@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,9 +11,8 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-"""
-Adapted from Foolbox official implementation to implement max queries
-"""
+"""Adapted from Foolbox official implementation to implement max queries."""
+
 import logging
 import math
 from typing import Any, Callable, List, Optional, Union
@@ -22,8 +21,13 @@ import eagerpy as ep
 import numpy as np
 import torch
 from foolbox.attacks import LinearSearchBlendedUniformNoiseAttack
-from foolbox.attacks.base import (MinimizationAttack, T, get_criterion,
-                                  get_is_adversarial, raise_if_kwargs)
+from foolbox.attacks.base import (
+    MinimizationAttack,
+    T,
+    get_criterion,
+    get_is_adversarial,
+    raise_if_kwargs,
+)
 from foolbox.criteria import Criterion
 from foolbox.devutils import atleast_kd, flatten
 from foolbox.distances import l1, l2, linf
@@ -38,24 +42,24 @@ class HopSkipJump(MinimizationAttack):
 
     Args:
         init_attack : Attack to use to find a starting points. Defaults to
-            LinearSearchBlendedUniformNoiseAttack. Only used if starting_points 
+            LinearSearchBlendedUniformNoiseAttack. Only used if starting_points
             is None.
         steps : Number of optimization steps within each binary search step.
-        initial_gradient_eval_steps: Initial number of evaluations for gradient 
+        initial_gradient_eval_steps: Initial number of evaluations for gradient
             estimation. Larger initial_num_evals increases time efficiency, but
             may decrease query efficiency.
-        max_gradient_eval_steps : Maximum number of evaluations for gradient 
+        max_gradient_eval_steps : Maximum number of evaluations for gradient
             estimation.
-        stepsize_search : How to search for stepsize; choices are 
-            'geometric_progression', 'grid_search'. 'geometric progression' 
-            initializes the stepsize by ||x_t - x||_p / sqrt(iteration), and 
-            keep decreasing by half until reaching the target side of the 
-            boundary. 'grid_search' chooses the optimal epsilon over a grid, in 
+        stepsize_search : How to search for stepsize; choices are
+            'geometric_progression', 'grid_search'. 'geometric progression'
+            initializes the stepsize by ||x_t - x||_p / sqrt(iteration), and
+            keep decreasing by half until reaching the target side of the
+            boundary. 'grid_search' chooses the optimal epsilon over a grid, in
             the scale of ||x_t - x||_p.
         gamma : The binary search threshold theta is gamma / d^1.5 for
                    l2 attack and gamma / d^2 for linf attack.
-        tensorboard : The log directory for TensorBoard summaries. If False, 
-            TensorBoard summaries will be disabled (default). If None, the 
+        tensorboard : The log directory for TensorBoard summaries. If False,
+            TensorBoard summaries will be disabled (default). If None, the
             logdir will be runs/CURRENT_DATETIME_HOSTNAME.
         constraint : Norm to minimize, either "l2" or "linf"
 
@@ -83,6 +87,7 @@ class HopSkipJump(MinimizationAttack):
         verbose: bool = False,
         preprocess: Optional[Any] = None,
         prep_backprop: bool = False,
+        smart_noise: Optional[Any] = None,
     ):
         if init_attack is not None and not isinstance(
             init_attack, MinimizationAttack
@@ -100,6 +105,7 @@ class HopSkipJump(MinimizationAttack):
         self.verbose = verbose
         self.preprocess = preprocess
         self.prep_backprop = prep_backprop
+        self.smart_noise = smart_noise
 
         assert constraint in ("l2", "linf")
         if constraint == "l2":
@@ -125,6 +131,7 @@ class HopSkipJump(MinimizationAttack):
         is_adversarial = get_is_adversarial(criterion, model)
         # num_queries = torch.zeros(inputs.size(0), device=inputs.device)
         num_queries = 0
+        curr_num_queries: int = 0
 
         if starting_points is None:
             init_attack: MinimizationAttack
@@ -138,7 +145,7 @@ class HopSkipJump(MinimizationAttack):
                 num_queries += 50
             else:
                 init_attack = self.init_attack
-            # TODO: use call and support all types of attacks (once early_stop 
+            # TODO: use call and support all types of attacks (once early_stop
             # is ossible in __call__)
             x_advs = init_attack.run(
                 model, originals, criterion, early_stop=early_stop
@@ -302,10 +309,16 @@ class HopSkipJump(MinimizationAttack):
     ) -> ep.Tensor:
         # (steps, bs, ...)
         noise_shape = tuple([steps] + list(x_advs.shape))
-        if self.constraint == "l2":
-            rv = ep.normal(x_advs, noise_shape)
-        elif self.constraint == "linf":
-            rv = ep.uniform(x_advs, low=-1, high=1, shape=noise_shape)
+
+        if self.smart_noise is not None:
+            rv = self.smart_noise(x_advs.raw, steps)
+            rv = ep.astensor(torch.from_numpy(rv).to(x_advs.raw.device))
+        else:
+            if self.constraint == "l2":
+                rv = ep.normal(x_advs, noise_shape)
+            elif self.constraint == "linf":
+                rv = ep.uniform(x_advs, low=-1, high=1, shape=noise_shape)
+
         # EDIT: fix bug here with flatten
         rv /= (
             atleast_kd(ep.norms.l2(flatten(rv, keep=2), axis=-1), rv.ndim)
@@ -313,7 +326,8 @@ class HopSkipJump(MinimizationAttack):
         )
         scaled_rv = atleast_kd(ep.expand_dims(delta, 0), rv.ndim) * rv
 
-        perturbed = ep.expand_dims(x_advs, 0) + scaled_rv
+        # perturbed = ep.expand_dims(x_advs, 0) + scaled_rv
+        perturbed = x_advs + scaled_rv
         perturbed = ep.clip(perturbed, 0, 1)
 
         # EDIT: apply preprocess in forward pass if specified
@@ -382,7 +396,7 @@ class HopSkipJump(MinimizationAttack):
     def _project(
         self, originals: ep.Tensor, perturbed: ep.Tensor, epsilons: ep.Tensor
     ) -> ep.Tensor:
-        """Clips the perturbations to epsilon and returns the new perturbed
+        """Clips the perturbations to epsilon and returns the new perturbed.
 
         Args:
             originals: A batch of reference inputs.

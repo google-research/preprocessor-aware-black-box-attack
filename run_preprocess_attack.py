@@ -1,4 +1,5 @@
-#Copyright 2022 Google LLC
+"""Main script for running attacks on ML models with preprocessors."""
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -26,32 +27,42 @@ import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torchvision
 
-from extract_prep.attack import attack_dict
+from extract_prep.attack import ATTACK_DICT
 from extract_prep.attack.util import find_preimage, select_targets
 from extract_prep.preprocessor import PREPROCESSORS, Sequential
 from extract_prep.utils.dataloader import get_dataloader
 from extract_prep.utils.model import PreprocessModel
+from extract_prep.attack import smart_noise
+from extract_prep.preprocessor.base import Preprocessor
+
+_DataLoader = torch.utils.data.DataLoader
 
 
-def compute_dist(images, x_adv, ord):
-    if ord == "2":
+def _compute_dist(
+    images: torch.Tensor, x_adv: torch.Tensor, p: str
+) -> torch.Tensor:
+    """Compute distance between images and x_adv."""
+    dist: torch.Tensor
+    if p == "2":
         dist = (torch.sum((images - x_adv) ** 2, (1, 2, 3)) ** 0.5).cpu()
-    elif ord == "inf":
+    elif p == "inf":
         dist = (
             (images - x_adv).abs().reshape(images.size(0), -1).max(1)[0].cpu()
         )
     else:
-        raise NotImplementedError("Invalid norm")
+        raise NotImplementedError(
+            f'Invalid norm; p must be "2", but it is {p}.'
+        )
     return dist
 
 
-def print_result(name, args, images, labels, x_adv, y_pred_adv, ord="2"):
+def _print_result(name, args, images, labels, x_adv, y_pred_adv, ord="2"):
     print(f"=> Attack {name}...")
     idx_success = y_pred_adv != labels
     if args["targeted"]:
         idx_success.logical_not_()
     print(f"   success rate: {idx_success.float().mean().item():.4f}")
-    dist = compute_dist(images, x_adv, ord)
+    dist = _compute_dist(images, x_adv, ord)
     dist_success = dist[idx_success]
     print(f"   mean dist: {dist_success.mean().item():.6f}")
     # Account for small numerical error (0.01%)
@@ -63,7 +74,50 @@ def print_result(name, args, images, labels, x_adv, y_pred_adv, ord="2"):
     return idx_success, dist
 
 
-def run_proj_only(
+def _setup_smart_noise(lr_size, hr_size, preprocessor):
+    # Load scaling
+    # lr_size, hr_size = base, base * args.scale
+    # lr_shape, hr_shape = (3, lr_size, lr_size), (3, hr_size, hr_size)
+    # scaling = ScalingAPI(hr_shape[1:], lr_shape[1:], args.lib, args.alg)
+
+    # Load pooling layer (exact)
+    pooling_layer = None
+    # if args.defense != 'none':
+    #     pooling_layer = POOLING_MAPS[args.defense].from_api(scaling)
+
+    # Load pooling layer (estimate)
+    pooling_layer_estimate = pooling_layer
+    # if args.defense == 'median' and not args.no_smart_median:
+    #     pooling_layer_estimate = POOLING_MAPS['quantile'].like(pooling_layer)
+
+    # Load scaling layer
+    # scaling_layer = None
+    # if args.scale > 1:
+    #     scaling_layer = ScalingLayer.from_api(scaling).eval().cuda()
+    # Scaling layer scales noise down and up
+    prep, inv_prep, _, _ = preprocessor.get_prep()
+    # scaling_layer = nn.Sequential(prep, inv_prep)
+    scaling_layer = prep
+
+    # Synthesize projection (only combine non-None layers)
+    projection = nn.Sequential(*filter(None, [pooling_layer, scaling_layer]))
+    projection_estimate = nn.Sequential(
+        *filter(None, [pooling_layer_estimate, scaling_layer])
+    )
+
+    # Smart noise
+    snoise = smart_noise.SmartNoise(
+        hr_shape=(3, hr_size, hr_size),
+        lr_shape=(3, lr_size, lr_size),
+        projection=projection,
+        projection_estimate=projection_estimate,
+        precise=False,
+        # precise=args.precise_noise,
+    )
+    return snoise
+
+
+def _run_proj_only(
     args,
     num_samples,
     ukp_model,
@@ -92,19 +146,18 @@ def run_proj_only(
         out, _ = find_preimage(
             args,
             ukp_model,
+            kp_model,
             y.to(device),
             x_gt[begin:end].to(device),
             z_adv_kp[begin:end].to(device),
             wrong_prep if wrong_prep is not None else prep,
-            inv_prep=preprocess.atk_to_orig,
             verbose=args["verbose"],
-            kp_model=kp_model,
         )
         x_adv_kp[begin:end] = out.cpu()
         with torch.no_grad():
             y_pred_proj[begin:end] = ukp_model(out.to(device)).argmax(1).cpu()
 
-    print_result(
+    _print_result(
         "Known Preprocess",
         args,
         x_gt,
@@ -115,31 +168,32 @@ def run_proj_only(
     )
 
 
-def main(args, savename):
+def _main(args: dict[str, str | float | int], savename: str) -> None:
 
-    device = "cuda"
+    device: str = "cuda"
     random.seed(args["seed"])
     np.random.seed(args["seed"])
     torch.manual_seed(args["seed"])
     cudnn.benchmark = True
-    num_samples = args["num_samples"]
+    num_samples: int = args["num_samples"]
 
     print("=> Setting up base model...")
-    normalize = dict(
-        mean=torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32),
-        std=torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32),
-    )
-    base_model = timm.create_model("resnet18", pretrained=True)
+    normalize: dict[str, torch.Tensor] = {
+        "mean": torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32),
+        "std": torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32),
+    }
+    base_model: nn.Module = timm.create_model("resnet18", pretrained=True)
 
     # Set up preprocessing
     if "-" in args["preprocess"]:
         prep_init = Sequential
     else:
         prep_init = PREPROCESSORS[args["preprocess"]]
-    preprocess = prep_init(args, input_size=args["orig_size"])
+    preprocess: Preprocessor = prep_init(args, input_size=args["orig_size"])
     prep, _, atk_prep, prepare_atk_img = preprocess.get_prep()
 
     use_wrong_prep = args["mismatch_prep"] is not None
+    wrong_preprocess: Preprocessor | None = None
     if use_wrong_prep:
         print(
             f"=> Simulating mismatched preprocessing: "
@@ -152,35 +206,42 @@ def main(args, savename):
         wrong_prep, _, _, prepare_atk_img = wrong_preprocess.get_prep()
 
     # Initialize models with known and unknown preprocessing
-    ukp_model = (
+    ukp_model: PreprocessModel = (
         PreprocessModel(base_model, preprocess=prep, normalize=normalize)
         .eval()
         .to(device)
     )
-    kp_model = (
+    kp_model: PreprocessModel = (
         PreprocessModel(base_model, preprocess=atk_prep, normalize=normalize)
         .eval()
         .to(device)
     )
-    ukp_model = nn.DataParallel(ukp_model).eval().to(device)
-    kp_model = nn.DataParallel(kp_model).eval().to(device)
+    ukp_model: nn.Module = nn.DataParallel(ukp_model).eval().to(device)
+    kp_model: nn.Module = nn.DataParallel(kp_model).eval().to(device)
 
-    validloader = get_dataloader(args)
+    validloader: _DataLoader = get_dataloader(args)
     # Create another dataloader for targeted attacks
-    targeted_dataloader = None
+    targeted_dataloader: _DataLoader | None = None
     if args["targeted"]:
         print("=> Creating the second dataloader for targeted attack...")
         copy_args = deepcopy(args)
         copy_args["batch_size"] = 1
         targeted_dataloader = get_dataloader(copy_args)
 
+    snoise: smart_noise.SmartNoise | None = None
+    if args["smart_noise"]:
+        snoise = _setup_smart_noise(
+            args["resize_out_size"], args["orig_size"], preprocess
+        )
+
     # Initialize attacks with known and unknown preprocessing
-    attack_init = attack_dict[args["attack"]]
+    attack_init = ATTACK_DICT[args["attack"]]
     ukp_attack = attack_init(
         ukp_model,
         args,
         input_size=args["orig_size"],
         targeted_dataloader=targeted_dataloader,
+        smart_noise=snoise,
     )
     if args["prep_backprop"]:
         # Only makes sense to backprop through preprocessing if it's used in
@@ -197,6 +258,7 @@ def main(args, savename):
         ),
         prep_backprop=args["prep_backprop"],
         prep_proj=args["prep_proj"],
+        smart_noise=snoise,
     )
 
     x_gt, y_gt, y_tgt = [], [], []
@@ -206,7 +268,7 @@ def main(args, savename):
     start_time = time.time()
 
     if args["run_proj_only"]:
-        run_proj_only(
+        _run_proj_only(
             args,
             num_samples,
             ukp_model,
@@ -226,7 +288,7 @@ def main(args, savename):
 
             # Select images that are correctly classified only (mainly to deal
             # with square attack)
-            y_ = ukp_model(images).argmax(-1)
+            y_ = ukp_model(images).argmax(-1)  # pylint: disable=not-callable
             idx = y_ == labels
             num_correct += idx.float().sum()
             if not idx.any():
@@ -251,7 +313,11 @@ def main(args, savename):
                 # Attack preprocess model (unknown)
                 out = ukp_attack.run(images, labels, tgt=tgt_data)
                 x_adv_ukp.append(out.cpu())
-                y_pred_ukp.append(ukp_model(out.to(device)).argmax(1).cpu())
+                y_pred_ukp.append(
+                    ukp_model(out.to(device))  # pylint: disable=not-callable
+                    .argmax(1)
+                    .cpu()
+                )
 
             if args["targeted"]:
                 tgt_data = (prepare_atk_img(tgt_data[0]), tgt_data[1])
@@ -264,7 +330,11 @@ def main(args, savename):
                     atk_images, labels, tgt=tgt_data, preprocess=prepare_atk_img
                 )
                 z_adv_kp.append(out.cpu())
-                y_pred_kp.append(kp_model(out.to(device)).argmax(1).cpu())
+                y_pred_kp.append(
+                    kp_model(out.to(device))  # pylint: disable=not-callable
+                    .argmax(1)
+                    .cpu()
+                )
 
             print(
                 f"batch {i + 1}: {time.time() - start_batch:.2f}s", flush=True
@@ -303,7 +373,9 @@ def main(args, savename):
             x_adv_kp[begin:end] = out.cpu()
             with torch.no_grad():
                 y_pred_proj[begin:end] = (
-                    ukp_model(out.to(device)).argmax(1).cpu()
+                    ukp_model(out.to(device))  # pylint: disable=not-callable
+                    .argmax(1)
+                    .cpu()
                 )
 
     print(f"=> Total attack time: {time.time() - start_time:.2f}s")
@@ -313,7 +385,7 @@ def main(args, savename):
     if not args["run_kp_only"]:
         x_adv_ukp = torch.cat(x_adv_ukp, dim=0)[:num_samples]
         y_pred_ukp = torch.cat(y_pred_ukp, dim=0)[:num_samples]
-        ukp_idx, ukp_dist = print_result(
+        ukp_idx, ukp_dist = _print_result(
             "Unknown Preprocess",
             args,
             x_gt,
@@ -334,7 +406,7 @@ def main(args, savename):
             f"=> Initial success rate before projection: "
             f"{success_idx.float().mean().item():.4f}"
         )
-        kp_idx, kp_dist = print_result(
+        kp_idx, kp_dist = _print_result(
             "Known Preprocess",
             args,
             x_gt,
@@ -347,7 +419,7 @@ def main(args, savename):
         output_dict["dist_kp"] = kp_dist
         # Also print results before recovery phase
         if not any([p in args["preprocess"] for p in ("resize", "crop")]):
-            print_result(
+            _print_result(
                 "Known Preprocess (no recovery)",
                 args,
                 x_gt,
@@ -371,7 +443,8 @@ def main(args, savename):
     print("Finished.")
 
 
-def run_one(args):
+def run_one_setting(args):
+    """Run attack for one setting given by args."""
     # Determine output file name
     # Get all preprocessings and their params
     preps = args["preprocess"].split("-")
@@ -407,10 +480,11 @@ def run_one(args):
         sys.stderr = sys.stdout
 
     print(args)
-    main(args, path)
+    _main(args, path)
 
 
-def parse_args():
+def parse_args() -> dict[str, str | float | int]:
+    """Get a common argparser."""
     parser = argparse.ArgumentParser(
         description="Known-preprocessor Attack", add_help=True
     )
@@ -494,11 +568,12 @@ def parse_args():
         action="store_true",
         help=("Project after each attack update (only works with HSJ, QEBA)."),
     )
+    parser.add_argument("--smart-noise", action="store_true")
     # ============================= Preprocess ============================== #
     # Resize
     parser.add_argument("--resize-out-size", default=224, type=int)
     parser.add_argument("--resize-inv-size", default=None, type=int)
-    parser.add_argument("--antialias", default=False, type=bool)
+    parser.add_argument("--antialias", action="store_true")
     parser.add_argument("--resize-interp", default="nearest", type=str)
     # Quantize
     parser.add_argument("--quantize-num-bits", default=8, type=int)
@@ -550,4 +625,4 @@ if __name__ == "__main__":
     if args["debug"]:
         args["verbose"] = True
 
-    run_one(args)
+    run_one_setting(args)

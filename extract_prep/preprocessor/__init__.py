@@ -11,7 +11,7 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-from .base import BasePreprocess
+from .base import Preprocessor
 from .crop import Crop
 from .jpeg import JPEG
 from .neural import Neural
@@ -21,7 +21,7 @@ from .resize_opt import ResizeOpt
 from .sequential import Sequential
 
 PREPROCESSORS = {
-    "identity": BasePreprocess,
+    "identity": Preprocessor,
     "quantize": Quantize,
     "resize": Resize,
     "resize-opt": ResizeOpt,

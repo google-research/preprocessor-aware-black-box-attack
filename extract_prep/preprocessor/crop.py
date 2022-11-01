@@ -13,10 +13,10 @@
 
 from torchvision import transforms
 
-from .base import BasePreprocess
+from .base import Preprocessor
 
 
-class Crop(BasePreprocess):
+class Crop(Preprocessor):
     def __init__(self, params, input_size=None, **kwargs):
         super().__init__(params, input_size=input_size, **kwargs)
         # Assume square

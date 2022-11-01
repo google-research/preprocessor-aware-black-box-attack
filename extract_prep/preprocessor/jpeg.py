@@ -11,15 +11,15 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-from extract_prep.preprocessor.base import BasePreprocess, identity
+from extract_prep.preprocessor.base import Preprocessor, _identity
 from extract_prep.preprocessor.diffjpeg import DiffJPEG
 
 
-class JPEG(BasePreprocess):
+class JPEG(Preprocessor):
     def __init__(self, params, **kwargs):
         super().__init__(params, **kwargs)
         quality = params["jpeg_quality"]
         self.prep = DiffJPEG(differentiable=True, quality=quality).cuda()
-        self.inv_prep = identity
+        self.inv_prep = _identity
         self.atk_prep = self.prep
-        self.prepare_atk_img = identity
+        self.prepare_atk_img = _identity

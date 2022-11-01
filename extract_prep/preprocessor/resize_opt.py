@@ -13,11 +13,11 @@
 
 from torchvision import transforms
 
-from .base import BasePreprocess
+from .base import Preprocessor
 from .util import BICUBIC, BILINEAR, NEAREST, ApplySequence, SimpleInterp
 
 
-class ResizeOpt(BasePreprocess):
+class ResizeOpt(Preprocessor):
     def __init__(self, params, **kwargs):
         super().__init__(params, **kwargs)
         init_size = (params["input_size"], params["input_size"])

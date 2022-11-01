@@ -14,19 +14,19 @@
 from torch.nn import Module
 
 
-def identity(x):
+def _identity(x):
     return x
 
 
-class BasePreprocess(Module):
+class Preprocessor(Module):
     def __init__(self, params, input_size=None, **kwargs):
         super().__init__()
-        self.prep = identity
-        self.inv_prep = identity
-        self.atk_prep = identity
-        self.prepare_atk_img = identity
+        self.prep = _identity
+        self.inv_prep = _identity
+        self.atk_prep = _identity
+        self.prepare_atk_img = _identity
         self.output_size = input_size
-        self.atk_to_orig = identity
+        self.atk_to_orig = _identity
         self.has_exact_project = False
 
     def get_prep(self):

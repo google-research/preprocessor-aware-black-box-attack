@@ -13,7 +13,7 @@
 
 import torch
 
-from .base import BasePreprocess, identity
+from .base import Preprocessor, _identity
 
 
 class Quant:
@@ -26,11 +26,11 @@ class Quant:
         )
 
 
-class Quantize(BasePreprocess):
+class Quantize(Preprocessor):
     def __init__(self, params, **kwargs):
         super().__init__(params, **kwargs)
         num_bits = params["quantize_num_bits"]
         self.prep = Quant(num_bits)
-        self.inv_prep = identity
+        self.inv_prep = _identity
         self.atk_prep = self.prep
-        self.prepare_atk_img = identity
+        self.prepare_atk_img = _identity
