@@ -10,7 +10,7 @@ Decision-based adversarial attacks construct inputs that fool a machine-learning
 
 To install dependencies,
 
-```bash
+```[bash]
 # conda install -y pytorch==1.9.0 torchvision==0.10.0 torchaudio==0.9.0 cudatoolkit=11.3 -c pytorch -c conda-forge
 conda install -y pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 conda install -y scipy pandas scikit-learn pip
@@ -31,7 +31,7 @@ pip install torchjpeg compressai --no-deps
 
 Load ImageNet validation set with blurred face
 
-```bash
+```[bash]
 wget https://image-net.org/data/ILSVRC/blurred/val_blurred.tar.gz
 ```
 
