@@ -37,8 +37,10 @@ from typing_extensions import Literal
 
 
 class HopSkipJump(MinimizationAttack):
-    """A powerful adversarial attack that requires neither gradients
-    nor probabilities [#Chen19].
+    """Our modified implementation of HopSkipJump attack.
+
+    A powerful adversarial attack that requires neither gradients nor
+    probabilities [#Chen19].
 
     Args:
         init_attack : Attack to use to find a starting points. Defaults to
@@ -70,6 +72,7 @@ class HopSkipJump(MinimizationAttack):
     """
 
     distance = l1
+    _SMALL_NUM: float = 1e-12
 
     def __init__(
         self,
@@ -88,11 +91,14 @@ class HopSkipJump(MinimizationAttack):
         preprocess: Optional[Any] = None,
         prep_backprop: bool = False,
         smart_noise: Optional[Any] = None,
-    ):
+        norm_rv: bool = False,
+    ) -> None:
         if init_attack is not None and not isinstance(
             init_attack, MinimizationAttack
         ):
-            raise NotImplementedError
+            raise NotImplementedError(
+                f"init_attack ({init_attack}) is not a MinimizationAttack."
+            )
         self.max_queries = max_queries
         self.init_attack = init_attack
         self.steps = steps
@@ -102,10 +108,11 @@ class HopSkipJump(MinimizationAttack):
         self.gamma = gamma
         self.tensorboard = tensorboard
         self.constraint = constraint
-        self.verbose = verbose
+        self._verbose = verbose
         self.preprocess = preprocess
         self.prep_backprop = prep_backprop
         self.smart_noise = smart_noise
+        self._norm_rv: bool = norm_rv
 
         assert constraint in ("l2", "linf")
         if constraint == "l2":
@@ -180,7 +187,7 @@ class HopSkipJump(MinimizationAttack):
         distances = self.distance(originals, x_advs)
 
         for step in range(self.steps):
-            delta = self.select_delta(originals, distances, step)
+            delta = self._select_delta(originals, distances, step)
 
             # Choose number of gradient estimation steps.
             num_gradient_estimation_steps = int(
@@ -192,7 +199,7 @@ class HopSkipJump(MinimizationAttack):
                 )
             )
 
-            gradients = self.approximate_gradients(
+            gradients = self._approximate_gradients(
                 is_adversarial, x_advs, num_gradient_estimation_steps, delta
             )
             # EDIT: plus num queries for grad estimates
@@ -258,13 +265,13 @@ class HopSkipJump(MinimizationAttack):
                     x_advs_proposals = ep.clip(x_advs_proposals, 0, 1)
 
                     mask = is_adversarial(x_advs_proposals)
-                    # EDIT: is_adversarial
+                    # Count queries for is_adversarial() call
                     num_queries += 1
 
                     x_advs_proposals, nq = self._binary_search(
                         is_adversarial, originals, x_advs_proposals
                     )
-                    # EDIT: binary search
+                    # Count queries for binary search
                     num_queries += nq
 
                     # only use new values where initial guess was already adversarial
@@ -289,7 +296,7 @@ class HopSkipJump(MinimizationAttack):
 
             # EDIT: break when max queries reached
             if num_queries >= self.max_queries:
-                if self.verbose:
+                if self._verbose:
                     print(
                         f"=> num queries: {curr_num_queries}, num steps: {step}"
                         f", distance: {ep.mean(distances):.3f}"
@@ -300,7 +307,7 @@ class HopSkipJump(MinimizationAttack):
 
         return restore_type(best_x_advs)
 
-    def approximate_gradients(
+    def _approximate_gradients(
         self,
         is_adversarial: Callable[[ep.Tensor], ep.Tensor],
         x_advs: ep.Tensor,
@@ -312,62 +319,49 @@ class HopSkipJump(MinimizationAttack):
 
         if self.smart_noise is not None:
             rv = self.smart_noise(x_advs.raw, steps)
-            rv = ep.astensor(torch.from_numpy(rv).to(x_advs.raw.device))
+            rv = torch.from_numpy(rv).to(x_advs.raw.device)
+            rv = ep.expand_dims(ep.astensor(rv), 1)
         else:
             if self.constraint == "l2":
                 rv = ep.normal(x_advs, noise_shape)
             elif self.constraint == "linf":
                 rv = ep.uniform(x_advs, low=-1, high=1, shape=noise_shape)
 
-        # EDIT: fix bug here with flatten
+        # Fix original bug here with flatten
         rv /= (
             atleast_kd(ep.norms.l2(flatten(rv, keep=2), axis=-1), rv.ndim)
-            + 1e-12
+            + self._SMALL_NUM
         )
-        scaled_rv = atleast_kd(ep.expand_dims(delta, 0), rv.ndim) * rv
+        delta_ = atleast_kd(ep.expand_dims(delta, 0), rv.ndim)
+        scaled_rv = delta_ * rv
 
-        # perturbed = ep.expand_dims(x_advs, 0) + scaled_rv
         perturbed = x_advs + scaled_rv
         perturbed = ep.clip(perturbed, 0, 1)
 
-        # EDIT: apply preprocess in forward pass if specified
+        # Apply preprocess in forward pass if specified
         if self.preprocess is not None:
+            perturbed = perturbed.raw.squeeze(1)
+            perturbed = ep.astensor(self.preprocess(perturbed).unsqueeze(1))
             if self.prep_backprop:
                 with torch.enable_grad():
                     x_temp = x_advs.raw
                     x_temp.requires_grad_()
                     out = self.preprocess(x_temp)
-            perturbed = perturbed.raw.squeeze(1)
-            perturbed = ep.astensor(self.preprocess(perturbed).unsqueeze(1))
-        # NOTE: Should rv be re-normalized here? It is not in the original
-        # implementation so we keep it as is. This is fixed in later commit:
+                x_advs = ep.astensor(out.detach())
+            else:
+                x_advs = ep.astensor(self.preprocess(x_advs.raw))
+
+        # Should rv be re-normalized here? It is not in the original
+        # implementation, but it is fixed in later commit:
         # https://github.com/bethgelab/foolbox/commit/d11c90585e1b14385dfd2f6777fe3e047ba25089
-        rv = (perturbed - x_advs) / 2
+        rv = (perturbed - x_advs) / (delta_ if self._norm_rv else 2)
 
         multipliers_list: List[ep.Tensor] = []
+        batch_size: int = len(x_advs)
+        ones = ep.ones(x_advs, batch_size)
         for step in range(steps):
             decision = is_adversarial(perturbed[step])
-            multipliers_list.append(
-                ep.where(
-                    decision,
-                    ep.ones(
-                        x_advs,
-                        (
-                            len(
-                                x_advs,
-                            )
-                        ),
-                    ),
-                    -ep.ones(
-                        x_advs,
-                        (
-                            len(
-                                x_advs,
-                            )
-                        ),
-                    ),
-                )
-            )
+            multipliers_list.append(ep.where(decision, ones, -ones))
         # (steps, bs, ...)
         multipliers = ep.stack(multipliers_list, 0)
 
@@ -380,7 +374,7 @@ class HopSkipJump(MinimizationAttack):
         )
         grad = ep.mean(atleast_kd(vals, rv.ndim) * rv, axis=0)
 
-        # EDIT: Backprop gradient through the preprocessor
+        # Backprop gradient through the preprocessor
         if self.preprocess is not None and self.prep_backprop:
             with torch.enable_grad():
                 out.backward(grad.raw)
@@ -388,7 +382,7 @@ class HopSkipJump(MinimizationAttack):
 
         grad /= (
             atleast_kd(ep.norms.l2(flatten(grad, keep=1), axis=-1), grad.ndim)
-            + 1e-12
+            + self._SMALL_NUM
         )
 
         return grad
@@ -402,8 +396,10 @@ class HopSkipJump(MinimizationAttack):
             originals: A batch of reference inputs.
             perturbed: A batch of perturbed inputs.
             epsilons: A batch of norm values to project to.
+
         Returns:
-            A tensor like perturbed but with the perturbation clipped to epsilon.
+            A tensor like perturbed but with the perturbation clipped to
+            epsilon.
         """
         epsilons = atleast_kd(epsilons, originals.ndim)
         if self.constraint == "linf":
@@ -474,7 +470,7 @@ class HopSkipJump(MinimizationAttack):
 
         return res, num_queries
 
-    def select_delta(
+    def _select_delta(
         self, originals: ep.Tensor, distances: ep.Tensor, step: int
     ) -> ep.Tensor:
         result: ep.Tensor

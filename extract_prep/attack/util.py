@@ -491,9 +491,9 @@ def find_preimage(
         verbose=verbose,
     )
     if verbose:
-        print(
-            f"=> Exponential search steps used (mean): {num_steps_used.float().mean():.2f}"
-        )
+        mean_num_steps = num_steps_used.float().mean()
+        print(f"=> Exponential search steps used (mean): {mean_num_steps:.2f}")
+        
     x = binary_search_best_adv(
         ukp_model,
         y,

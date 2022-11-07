@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,11 +11,12 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-'''
+"""
 This code implements differentiable JPEG compression and is modified from
 https://github.com/mlomnitz/DiffJPEG/blob/master/DiffJPEG.py.
 Now `quality` can vary between samples in the same batch.
-'''
+"""
+
 import torch
 import torch.nn as nn
 from .compression import compress_jpeg
@@ -23,26 +24,20 @@ from .decompression import decompress_jpeg
 from .utils import diff_round, quality_to_factor
 
 
-def identity(x):
-    return x
-
-
 class DiffJPEG(nn.Module):
-    def __init__(self, differentiable=True, quality=80):
-        ''' Initialize the DiffJPEG layer
-        Inputs:
-            height(int): Original image hieght
-            width(int): Original image width
+    def __init__(self, differentiable: bool = True, quality: int = 80) -> None:
+        """Initialize the DiffJPEG layer.
+
+        Args:
             differentiable(bool): If true uses custom differentiable
                 rounding function, if false uses standrard torch.round
-            quality(float): Quality factor for jpeg compression scheme. 
-        '''
+            quality(float): Quality factor for jpeg compression scheme.
+        """
         super(DiffJPEG, self).__init__()
         if differentiable:
             rounding = diff_round
         else:
             rounding = torch.round
-            # rounding = identity
         # TODO: Both compress and decompress use a very poor fix on the
         # DataParallel issue: nn.Parameter (or buffer) is not copied to all
         # devices properly.

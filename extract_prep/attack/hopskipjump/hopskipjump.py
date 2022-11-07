@@ -11,15 +11,15 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-import torch.nn.functional as F
+"""Wrapper around Foolbox HopSkipJump attack implementation."""
 
 import foolbox
 import numpy as np
 from foolbox import PyTorchModel
 from typing import Any, Optional
 
-from ..base import Attack
-from .hop_skip_jump import HopSkipJump
+from extract_prep.attack.base import Attack
+from extract_prep.attack.hopskipjump.hop_skip_jump import HopSkipJump
 
 
 class HopSkipJumpAttack(Attack):
@@ -55,14 +55,13 @@ class HopSkipJumpAttack(Attack):
             gamma=args["hsj_gamma"],
             constraint=f'l{args["ord"]}',
             verbose=args["verbose"],
-            # stepsize_search='grid_search',
             preprocess=preprocess,
             smart_noise=smart_noise,
+            norm_rv=args["hsj_norm_rv"],
+            prep_backprop=args["prep_backprop"],
         )
 
     def run(self, imgs, labels, tgt=None, **kwargs):
-        # if labels.ndim == 1:
-        #     labels = F.one_hot(labels, num_classes=1000)
         if tgt is None:
             criteria = foolbox.criteria.Misclassification(labels)
             starting_points = None

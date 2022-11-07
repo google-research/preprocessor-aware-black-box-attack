@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,6 +11,8 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Resizing preprocessor module."""
+
 import os
 import pickle
 import time
@@ -18,42 +20,55 @@ import time
 import numpy as np
 import scipy.sparse
 import torch
-import torch.nn.functional as T
 from torchvision import transforms
 
-from .base import Preprocessor
-from .util import BICUBIC, BILINEAR, NEAREST, ApplySequence
+from extract_prep.preprocessor.base import Preprocessor, identity
+from extract_prep.preprocessor.util import (
+    BICUBIC,
+    BILINEAR,
+    NEAREST,
+    ApplySequence,
+)
 
 
 class Resize(Preprocessor):
-    def __init__(self, params, **kwargs):
+    """Wrapper for resizing preprocessor."""
+
+    def __init__(self, params: dict[str, str | int | float], **kwargs) -> None:
+        """Initialize resizing preprocessor.
+
+        Args:
+            params: Parameter dict for resizing.
+
+        Raises:
+            NotImplementedError: Unknown interpolation method.
+        """
         super().__init__(params, **kwargs)
-        orig_size = (params["orig_size"], params["orig_size"])
-        final_size = (params["resize_out_size"], params["resize_out_size"])
+        orig_size: tuple[int, int] = (params["orig_size"], params["orig_size"])
+        final_size: tuple[int, int] = (
+            params["resize_out_size"],
+            params["resize_out_size"],
+        )
+        inv_size: tuple[int, int]
         if params["resize_inv_size"] is None:
             inv_size = final_size
         else:
             inv_size = (params["resize_inv_size"], params["resize_inv_size"])
-        antialias = params["antialias"]
+        antialias: bool = params["antialias"]
         interp = {
             "nearest": NEAREST,
             "bilinear": BILINEAR,
             "bicubic": BICUBIC,
         }[params["resize_interp"]]
-        self.interp = params["resize_interp"]
+        self._interp: str = params["resize_interp"]
+        self._bypass: bool = not params["prep_grad_est"]
+        if not self._bypass and not params["prep_backprop"]:
+            raise ValueError(
+                "prep_backprop must be True for resizing if Biased-Gradient "
+                "Attack is used instead of Bypassing Attack."
+            )
 
         self.output_size = final_size[0]
-
-        # https://github.com/pytorch/pytorch/pull/64501
-        # interp = 'nearest-exact' if params['resize_interp'] == 'nearest' else params['resize_interp']
-        # align_corners = False if interp in ['bilinear', 'bicubic'] else None
-        # def correct_resize(size):
-        #     return lambda x: T.interpolate(x, size=size, mode=interp,
-        #                                    align_corners=align_corners,
-        #                                    antialias=antialias)
-        # self.prep = correct_resize(final_size)
-        # self.inv_prep = correct_resize(int_size)
-        # self.atk_to_orig = correct_resize(orig_size)
 
         self.prep = transforms.Resize(
             final_size, interpolation=interp, antialias=antialias
@@ -64,20 +79,25 @@ class Resize(Preprocessor):
         self.atk_to_orig = transforms.Resize(
             orig_size, interpolation=interp, antialias=antialias
         )
+        self.atk_prep = (
+            ApplySequence([self.inv_prep, self.prep])
+            if self._bypass
+            else self.prep
+        )
+        self.prepare_atk_img = self.prep if self._bypass else identity
 
-        self.atk_prep = ApplySequence([self.inv_prep, self.prep])
-        self.prepare_atk_img = self.prep
+        self.has_exact_project: bool = self._interp in ("nearest", "bilinear")
+        self.pinv_mat: np.ndarray | None = None
 
-        self.has_exact_project = self.interp in ("nearest", "bilinear")
-        if self.interp == "nearest":
+        if self._interp == "nearest":
             x_temp = torch.arange(orig_size[0] ** 2).view((1,) + orig_size)
             z_temp = self.prep(x_temp)
             self.register_buffer("prep_idx", z_temp.view(-1))
-        elif self.interp in ("bilinear", "bicubic"):
-            print(
-                f'=> Getting linear map for {params["resize_interp"]} resize...'
+        elif self._interp in ("bilinear", "bicubic"):
+            print(f"=> Getting linear map for {self._interp} resize...")
+            mat_name = (
+                f"mat_resize_{self._interp}_{orig_size[0]}_{final_size[0]}.pkl"
             )
-            mat_name = f'mat_resize_{params["resize_interp"]}_{orig_size[0]}_{final_size[0]}.pkl'
             if os.path.exists(mat_name):
                 print("  => Pre-computed mapping found!")
                 print(f"  => Loading a mapping from {mat_name}...")
@@ -118,35 +138,30 @@ class Resize(Preprocessor):
                     x_temp[batch_idx, :, i, batch_idx] = 0
                 mat = mat.reshape((final_size[0] ** 2, orig_size[0] ** 2))
                 mat = scipy.sparse.coo_matrix(mat)
-                print(
-                    f"  => Finished computing mapping in {int(time.time() - start_time)}s"
-                )
+                elapsed_time: int = int(time.time() - start_time)
+                print(f"  => Finished computing mapping in {elapsed_time}s")
                 start_time = time.time()
 
                 print("  => Computing a pseudo-inverse...")
                 # Mx = z, M(x - x0) = z - Mx0, x - x0 = pinv(M) @ (z - Mx0)
                 pinv_mat = mat.T @ scipy.sparse.linalg.inv(mat @ mat.T)
+                elapsed_time = int(time.time() - start_time)
+                print(f"  => Finished computing inverse in {elapsed_time}s")
                 print(
-                    f"  => Finished computing inverse in {int(time.time() - start_time)}s"
-                )
-
-                print(
-                    f"  => Saving the mapping as a sparse matrix at {mat_name}..."
+                    "  => Saving the mapping as a sparse matrix at "
+                    f"{mat_name}..."
                 )
                 pickle.dump([mat, pinv_mat], open(mat_name, "wb"))
 
-            # self.mat = torch.from_numpy(mat.toarray())
-            # self.pinv_mat = torch.from_numpy(pinv_mat.toarray())
             self.mat = mat.astype(np.float64)
-            self.pinv_mat = None
         else:
-            raise NotImplementedError(f"Invalid interp mode: {self.interp}.")
+            raise NotImplementedError(f"Invalid interp mode: {self._interp}.")
 
     def project(self, z, x):
         batch_size, num_channels, _, _ = z.shape
         x_shape = x.shape
         hx, wx = x_shape[2], x_shape[3]
-        if self.interp == "nearest":
+        if self._interp == "nearest":
             x = x.clone().view(batch_size, num_channels, -1)
             x[:, :, self.prep_idx] = z.view(batch_size, num_channels, -1)
             x = x.reshape(x_shape)
@@ -154,7 +169,9 @@ class Resize(Preprocessor):
             if self.pinv_mat is not None:
                 z_ = z - self.prep(x)
                 delta = (
-                    self.pinv_mat[None, None, :, :]
+                    self.pinv_mat[
+                        None, None, :, :
+                    ]  # pylint: disable=unsubscriptable-object
                     * z_.view(batch_size, num_channels, 1, -1).cpu()
                 ).sum(-1)
             else:

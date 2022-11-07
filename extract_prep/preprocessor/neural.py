@@ -13,7 +13,7 @@
 
 from compressai import zoo
 
-from .base import Preprocessor, _identity
+from .base import Preprocessor, identity
 
 
 class Neural(Preprocessor):
@@ -45,7 +45,7 @@ class Neural(Preprocessor):
             return out
 
         self.prep = compress
-        self.inv_prep = _identity
+        self.inv_prep = identity
         self.atk_prep = self.prep
-        self.prepare_atk_img = _identity
+        self.prepare_atk_img = identity
         self.atk_to_orig = self.inv_prep

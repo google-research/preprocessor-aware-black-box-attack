@@ -39,6 +39,7 @@ if __name__ == "__main__":
         },
         "hsj": {
             "hyp": ["hsj_gamma"],
+            # "val": [[1e2, 1e3, 1e4, 1e5, 1e6]],
             "val": [[1e2, 1e3, 1e4, 1e5]],
         },
         "qeba": {
@@ -46,9 +47,6 @@ if __name__ == "__main__":
             "val": [["naive", "resize2", "resize8", "resize16", "resize32"]],
         },
     }
-
-    # Run with default hyperparameters once
-    run_one_setting(args)
 
     params = hyp_to_search[args["attack"]]
     for i, hyp in enumerate(params["hyp"]):

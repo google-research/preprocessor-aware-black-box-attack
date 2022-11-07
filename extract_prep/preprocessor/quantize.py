@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,26 +11,28 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Quantization preprocessor."""
+
 import torch
+import torch.nn as nn
 
-from .base import Preprocessor, _identity
+from extract_prep.preprocessor.base import Preprocessor, identity
 
 
-class Quant:
-    def __init__(self, num_bits):
-        self.num_bits = num_bits
+class Quant(nn.Module):
+    def __init__(self, num_bits: int) -> None:
+        self.num_bits: int = num_bits
 
-    def __call__(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.round(x * (2**self.num_bits - 1)) / (
             2**self.num_bits - 1
         )
 
 
 class Quantize(Preprocessor):
-    def __init__(self, params, **kwargs):
+    def __init__(self, params: dict[str, str | int | float], **kwargs) -> None:
         super().__init__(params, **kwargs)
-        num_bits = params["quantize_num_bits"]
-        self.prep = Quant(num_bits)
-        self.inv_prep = _identity
+        self.prep = Quant(params["quantize_num_bits"])
+        self.inv_prep = identity
         self.atk_prep = self.prep
-        self.prepare_atk_img = _identity
+        self.prepare_atk_img = identity

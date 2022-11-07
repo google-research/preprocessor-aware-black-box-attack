@@ -1,4 +1,3 @@
-"""Main script for running attacks on ML models with preprocessors."""
 # Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
@@ -11,6 +10,8 @@
 # * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
+
+"""Main script for running attacks on ML models with preprocessors."""
 
 import argparse
 import os
@@ -27,15 +28,16 @@ import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torchvision
 
-from extract_prep.attack import ATTACK_DICT
+from extract_prep.attack import ATTACK_DICT, smart_noise
 from extract_prep.attack.util import find_preimage, select_targets
 from extract_prep.preprocessor import PREPROCESSORS, Sequential
+from extract_prep.preprocessor.base import Preprocessor
 from extract_prep.utils.dataloader import get_dataloader
 from extract_prep.utils.model import PreprocessModel
-from extract_prep.attack import smart_noise
-from extract_prep.preprocessor.base import Preprocessor
 
 _DataLoader = torch.utils.data.DataLoader
+
+_HUGE_NUM = 1e9
 
 
 def _compute_dist(
@@ -95,8 +97,7 @@ def _setup_smart_noise(lr_size, hr_size, preprocessor):
     # if args.scale > 1:
     #     scaling_layer = ScalingLayer.from_api(scaling).eval().cuda()
     # Scaling layer scales noise down and up
-    prep, inv_prep, _, _ = preprocessor.get_prep()
-    # scaling_layer = nn.Sequential(prep, inv_prep)
+    prep, _, _, _ = preprocessor.get_prep()
     scaling_layer = prep
 
     # Synthesize projection (only combine non-None layers)
@@ -252,7 +253,6 @@ def _main(args: dict[str, str | float | int], savename: str) -> None:
         args,
         input_size=preprocess.output_size,
         targeted_dataloader=targeted_dataloader,
-        # TODO: check atk_prep
         preprocess=(
             atk_prep if args["prep_grad_est"] or args["prep_proj"] else None
         ),
@@ -264,7 +264,7 @@ def _main(args: dict[str, str | float | int], savename: str) -> None:
     x_gt, y_gt, y_tgt = [], [], []
     y_pred_ukp, y_pred_kp, y_pred_proj = [], [], []
     x_adv_kp, x_adv_ukp, z_adv_kp = [], [], []
-    num_correct = 0
+    num_correct: int = 0
     start_time = time.time()
 
     if args["run_proj_only"]:
@@ -299,9 +299,12 @@ def _main(args: dict[str, str | float | int], savename: str) -> None:
             y_gt.append(labels.cpu())
             atk_images = prepare_atk_img(images)
             if i == 0:
-                print(labels.shape, images.shape, atk_images.shape)
+                print(
+                    f"labels shape: {labels.shape}, orig images shape: "
+                    f"{images.shape}, attack images shape: {atk_images.shape}."
+                )
 
-            tgt_data = None
+            tgt_data: torch.Tensor | None = None
             if args["targeted"]:
                 # Randomly select target samples for targeted attack
                 tgt_data = select_targets(
@@ -351,6 +354,10 @@ def _main(args: dict[str, str | float | int], savename: str) -> None:
         x_adv_kp = x_gt.clone()
         y_pred_proj = y_gt.clone()
         z_adv_kp = torch.cat(z_adv_kp, dim=0)[:num_samples]
+        # Briefly put prep on cpu since z_adv_kp is on cpu
+        prep.to(z_adv_kp.device)
+        z_adv_kp = prep(z_adv_kp)
+        prep.to(device)
         # Find pre-image projection of known-preprocessing attack
         batch_size = 1
         num_batches = int(np.ceil(num_samples / batch_size))
@@ -403,7 +410,7 @@ def _main(args: dict[str, str | float | int], savename: str) -> None:
             y_pred_kp == y_tgt if args["targeted"] else y_pred_kp != y_gt
         )
         print(
-            f"=> Initial success rate before projection: "
+            "=> Initial success rate before projection: "
             f"{success_idx.float().mean().item():.4f}"
         )
         kp_idx, kp_dist = _print_result(
@@ -417,9 +424,10 @@ def _main(args: dict[str, str | float | int], savename: str) -> None:
         )
         output_dict["idx_success_kp"] = kp_idx
         output_dict["dist_kp"] = kp_dist
+
         # Also print results before recovery phase
         if not any([p in args["preprocess"] for p in ("resize", "crop")]):
-            _print_result(
+            kpnr_idx, kpnr_dist = _print_result(
                 "Known Preprocess (no recovery)",
                 args,
                 x_gt,
@@ -428,6 +436,14 @@ def _main(args: dict[str, str | float | int], savename: str) -> None:
                 y_pred_kp,
                 ord=args["ord"],
             )
+
+            # Select smaller distance between with and without recovery
+            kpnr_dist[~kpnr_idx] += _HUGE_NUM
+            kp_dist[~kp_idx] += _HUGE_NUM
+            kp_idx = kp_idx | kpnr_idx
+            kp_dist = torch.minimum(kpnr_dist, kp_dist)
+            output_dict["idx_success_kp"] = kp_idx
+            output_dict["dist_kp"] = kp_dist
 
     if args["save_adv"]:
         output_dict["x_gt"] = x_gt
@@ -470,6 +486,12 @@ def run_one_setting(args):
         path += "-ukp"
     if args["run_kp_only"]:
         path += "-kp"
+    if args["smart_noise"]:
+        path += "-sns"
+    if args["prep_grad_est"]:
+        path += "-bg"  # Biased Gradient
+    if args["prep_backprop"]:
+        path += "-bp"
     if args["name"]:
         path += f'-{args["name"]}'
 
@@ -568,7 +590,11 @@ def parse_args() -> dict[str, str | float | int]:
         action="store_true",
         help=("Project after each attack update (only works with HSJ, QEBA)."),
     )
-    parser.add_argument("--smart-noise", action="store_true")
+    parser.add_argument(
+        "--smart-noise",
+        action="store_true",
+        help="Enable Smart Noise Sampling (SNS) from Gao et al. [ICML 2022].",
+    )
     # ============================= Preprocess ============================== #
     # Resize
     parser.add_argument("--resize-out-size", default=224, type=int)
@@ -592,6 +618,14 @@ def parse_args() -> dict[str, str | float | int]:
     parser.add_argument("--hsj-init-grad-steps", default=100, type=int)
     parser.add_argument("--hsj-max-grad-steps", default=200, type=int)
     parser.add_argument("--hsj-gamma", default=10, type=float)
+    parser.add_argument(
+        "--hsj-norm-rv",
+        action="store_true",
+        help=(
+            "If True, normalize noise in gradient approximation step (same as "
+            "the corrected implementation on Foolbox."
+        ),
+    )
     # Boundary Attack
     parser.add_argument("--boundary-step", default=1e-2, type=float)
     parser.add_argument("--boundary-orth-step", default=1e-2, type=float)

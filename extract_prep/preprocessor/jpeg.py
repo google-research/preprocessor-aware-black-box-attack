@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,7 +11,7 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-from extract_prep.preprocessor.base import Preprocessor, _identity
+from extract_prep.preprocessor.base import Preprocessor, identity
 from extract_prep.preprocessor.diffjpeg import DiffJPEG
 
 
@@ -20,6 +20,6 @@ class JPEG(Preprocessor):
         super().__init__(params, **kwargs)
         quality = params["jpeg_quality"]
         self.prep = DiffJPEG(differentiable=True, quality=quality).cuda()
-        self.inv_prep = _identity
+        self.inv_prep = identity
         self.atk_prep = self.prep
-        self.prepare_atk_img = _identity
+        self.prepare_atk_img = identity
