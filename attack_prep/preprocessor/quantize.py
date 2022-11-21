@@ -13,10 +13,12 @@
 
 """Quantization preprocessor."""
 
-import torch
-import torch.nn as nn
+from __future__ import annotations
 
-from extract_prep.preprocessor.base import Preprocessor, identity
+import torch
+from torch import nn
+
+from attack_prep.preprocessor.base import Preprocessor, identity
 
 
 class Quant(nn.Module):

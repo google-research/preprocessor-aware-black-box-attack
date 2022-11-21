@@ -13,6 +13,8 @@
 
 """Resizing preprocessor module."""
 
+from __future__ import annotations
+
 import os
 import pickle
 import time
@@ -22,8 +24,8 @@ import scipy.sparse
 import torch
 from torchvision import transforms
 
-from extract_prep.preprocessor.base import Preprocessor, identity
-from extract_prep.preprocessor.util import (
+from attack_prep.preprocessor.base import Preprocessor, identity
+from attack_prep.preprocessor.util import (
     BICUBIC,
     BILINEAR,
     NEAREST,
@@ -86,7 +88,7 @@ class Resize(Preprocessor):
         )
         self.prepare_atk_img = self.prep if self._bypass else identity
 
-        self.has_exact_project: bool = self._interp in ("nearest", "bilinear")
+        self.has_exact_project: bool = True
         self.pinv_mat: np.ndarray | None = None
 
         if self._interp == "nearest":
@@ -157,7 +159,19 @@ class Resize(Preprocessor):
         else:
             raise NotImplementedError(f"Invalid interp mode: {self._interp}.")
 
-    def project(self, z, x):
+    def project(self, z: torch.Tensor, x: torch.Tensor):
+        """Find projection of x onto z.
+
+        This is the closed-form recovery phase for resizing. x represents the
+        original image, and z is adversarial example in the processed space.
+
+        Args:
+            z: Original image.
+            x: Adversarial example in processed space.
+
+        Returns:
+            Projection of x on z.
+        """
         batch_size, num_channels, _, _ = z.shape
         x_shape = x.shape
         hx, wx = x_shape[2], x_shape[3]
@@ -168,10 +182,9 @@ class Resize(Preprocessor):
         else:
             if self.pinv_mat is not None:
                 z_ = z - self.prep(x)
+                # pylint: disable=unsubscriptable-object
                 delta = (
-                    self.pinv_mat[
-                        None, None, :, :
-                    ]  # pylint: disable=unsubscriptable-object
+                    self.pinv_mat[None, None, :, :]
                     * z_.view(batch_size, num_channels, 1, -1).cpu()
                 ).sum(-1)
             else:

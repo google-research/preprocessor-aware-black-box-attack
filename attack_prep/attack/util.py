@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 from art.estimators.classification import PyTorchClassifier
 
-EPS = 1e-12
+_EPS = 1e-12
 
 
 def setup_art(args, model, input_size):
@@ -81,7 +81,6 @@ def set_temp_seed(seed, devices=None):
 
 def select_targets(model, dataloader, labels):
     """Assume that `model` correctly classifies `images` as `labels`."""
-
     device = labels.device
     src_images, src_labels = [], []
     dataloader_iterator = iter(dataloader)
@@ -126,7 +125,7 @@ def overshoot(x_from, x_to, dist):
     """
     delta = x_to - x_from
     delta_norm = delta.reshape(delta.size(0), -1).norm(2, 1)
-    direction = delta / (delta_norm + EPS)[:, None, None, None]
+    direction = delta / (delta_norm + _EPS)[:, None, None, None]
     return x_to + dist * direction
 
 
@@ -173,21 +172,19 @@ def find_nearest_preimage(
     criteria="misclassify",
     verbose=False,
 ):
-
     if verbose:
         print("Finding pre-image of z_adv...")
-    batch_size = x_orig.size(0)
+    batch_size: int = x_orig.size(0)
+    log_steps: int = int(num_opt_steps / 20)
+
     orig_dtype = x_orig.dtype
     dtype = torch.float32
     prev_lmbda = torch.zeros((batch_size,), device=x_orig.device, dtype=dtype)
     x_orig = x_orig.to(dtype)
     z_adv = z_adv.to(dtype)
-    temp_model = model.to(dtype)
+    model.to(dtype)
 
-    if x_init is None:
-        x_init = x_orig
-    else:
-        x_init = x_init.to(dtype)
+    x_init = x_orig if x_init is None else x_init.to(dtype)
     x_init = x_init.detach()
     best_x_pre = x_init.clone()
     success_idx = torch.zeros_like(prev_lmbda, dtype=torch.bool, device="cpu")
@@ -201,8 +198,8 @@ def find_nearest_preimage(
     if args["targeted"]:
         criteria = "targeted"
     condition = {
-        "misclassify": lambda x: temp_model(x).argmax(-1) != y,
-        "targeted": lambda x: temp_model(x).argmax(-1) == y,
+        "misclassify": lambda x: model(x).argmax(-1) != y,
+        "targeted": lambda x: model(x).argmax(-1) == y,
         "dist_to_orig": lambda x: squared_error(x, x_orig) <= max_eps,
         "dist_to_adv": lambda x: check_match(preprocess(x), z_adv),
     }[criteria]
@@ -232,7 +229,7 @@ def find_nearest_preimage(
         a_pre.requires_grad_()
         # Choice of optimizer also seems to matter here. Some optimizer like
         # AdamW cannot get to very low precision for some reason.
-        optimizer = torch.optim.Adam([a_pre], lr=lr, eps=EPS)
+        optimizer = torch.optim.Adam([a_pre], lr=lr, eps=_EPS)
         # SGD is too sensitive to choice of lr, especially as lambda changes
         # optimizer = torch.optim.SGD([a_pre], lr=lr, momentum=0.9, nesterov=True)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -241,7 +238,7 @@ def find_nearest_preimage(
             patience=int(num_opt_steps / 100),
             threshold=1e-3,
             verbose=verbose,
-            eps=EPS,
+            eps=_EPS,
         )
         best_loss = np.inf
 
@@ -261,15 +258,17 @@ def find_nearest_preimage(
                 lr_scheduler.step(loss)
                 if loss.isnan().any():
                     raise ValueError("NaN loss encountered!")
-                if j % int(num_opt_steps / 20) == 0:
+
+                if j % log_steps == 0:
                     if verbose:
-                        print(f"step {j:4d}: {loss.item()}")
+                        print(f"step {j:4d}: {loss.item():.6f}")
                     if loss.item() < best_loss * 0.9999:
                         best_loss = loss.item()
                     else:
                         if verbose:
                             print(
-                                f"No improvement after {j} steps. Stopping..."
+                                f"No improvement in {log_steps} steps. "
+                                "Stopping..."
                             )
                         break
 
@@ -302,21 +301,29 @@ def find_nearest_preimage(
         best_x_pre[better_dist] = x_pre[better_dist]
         prev_lmbda = lmbda
         if verbose:
-            print("dist_orig: ", dist_orig)
-            print("dist_prep: ", dist_prep)
             print(
-                "L-inf diff: ",
+                "  Distortion (L2 square) in original space: ",
+                dist_orig.detach().cpu().numpy(),
+            )
+            print(
+                "  Reconstruction error (L2 square) in processed space: ",
+                dist_prep.detach().cpu().numpy(),
+            )
+            print(
+                "  L-inf distance in processed space: ",
                 (preprocess(x_pre) - z_adv)
                 .reshape(batch_size, -1)
                 .abs()
-                .max(1)[0],
+                .max(1)[0]
+                .cpu()
+                .numpy(),
             )
-            print("lambda, cur_success_idx: ", lmbda, cur_success_idx)
+            print("  lambda: ", lmbda.cpu().numpy())
+            print("  cur_success_idx: ", cur_success_idx.cpu().numpy())
 
     if verbose:
-        print(f"=> final pre-image success: {success_idx.sum()}/{batch_size}")
+        print(f"=> Final pre-image success: {success_idx.sum()}/{batch_size}")
     model.to(orig_dtype)
-    del temp_model
     return best_x_pre.detach().to(orig_dtype), success_idx
 
 
@@ -341,7 +348,7 @@ def expo_search_adv(
     num_steps_used = torch.zeros_like(y)
     delta = x_adv - x_orig
     delta_norm = delta.reshape(y.size(0), -1).norm(2, 1)[:, None, None, None]
-    delta /= delta_norm + EPS
+    delta /= delta_norm + _EPS
     x_expo = x_adv.clone()
     new_lo = torch.zeros_like(y, dtype=x_orig.dtype, device=x_orig.device)
 
@@ -461,7 +468,7 @@ def find_preimage(
         x_init = preprocess.atk_to_orig(z_adv)
 
         if verbose:
-            print(f"=> Running find_nearest_preimage...")
+            print("=> Running find_nearest_preimage...")
         x, _ = find_nearest_preimage(
             args,
             ukp_model,
@@ -493,7 +500,7 @@ def find_preimage(
     if verbose:
         mean_num_steps = num_steps_used.float().mean()
         print(f"=> Exponential search steps used (mean): {mean_num_steps:.2f}")
-        
+
     x = binary_search_best_adv(
         ukp_model,
         y,

@@ -14,28 +14,27 @@
 """Run attack by also sweeping a set of pre-defined hyperparameters."""
 
 import os
-from copy import deepcopy
 from functools import partial
 
 from run_preprocess_attack import parse_args, run_one_setting
 
-print = partial(print, flush=True)
+print = partial(print, flush=True)  # pylint: disable=redefined-builtin
 
 if __name__ == "__main__":
 
     args = parse_args()
     os.makedirs("./results", exist_ok=True)
-    if args["debug"]:
-        args["verbose"] = True
+    if args.debug:
+        args.verbose = True
 
     hyp_to_search = {
         "boundary": {
             "hyp": ["boundary_step", "boundary_orth_step"],
-            "val": [[0.1, 0.001], [0.1, 0.001]],
+            "val": [[0.1, 0.01, 0.001], [0.1, 0.001]],
         },
         "signopt": {
             "hyp": ["signopt_alpha", "signopt_beta"],
-            "val": [[2, 0.02], [0.1, 0.01, 0.0001]],
+            "val": [[2, 0.2, 0.02], [0.1, 0.01, 0.0001]],
         },
         "hsj": {
             "hyp": ["hsj_gamma"],
@@ -44,14 +43,23 @@ if __name__ == "__main__":
         },
         "qeba": {
             "hyp": ["qeba_subspace"],
-            "val": [["naive", "resize2", "resize8", "resize16", "resize32"]],
+            "val": [
+                [
+                    "naive",
+                    "resize2",
+                    "resize4",
+                    "resize8",
+                    "resize16",
+                    "resize32",
+                ]
+            ],
         },
     }
 
-    params = hyp_to_search[args["attack"]]
+    params = hyp_to_search[args.attack]
     for i, hyp in enumerate(params["hyp"]):
         vals = params["val"][i]
         for val in vals:
-            new_args = deepcopy(args)
-            new_args[hyp] = val
-            run_one_setting(new_args)
+            config = vars(args)
+            config[hyp] = val
+            run_one_setting(config)

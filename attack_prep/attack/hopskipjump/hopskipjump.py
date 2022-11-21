@@ -18,8 +18,8 @@ import numpy as np
 from foolbox import PyTorchModel
 from typing import Any, Optional
 
-from extract_prep.attack.base import Attack
-from extract_prep.attack.hopskipjump.hop_skip_jump import HopSkipJump
+from attack_prep.attack.base import Attack
+from attack_prep.attack.hopskipjump.hop_skip_jump import HopSkipJump
 
 
 class HopSkipJumpAttack(Attack):
