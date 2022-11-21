@@ -35,7 +35,11 @@ from attack_prep.preprocessor.util import (
 )
 from attack_prep.utils.argparser import parse_args
 from attack_prep.utils.model import PreprocessModel
-from extract_prep.classification_api import ClassifyAPI, PyTorchModelAPI
+from extract_prep.classification_api import (
+    ClassifyAPI,
+    GoogleAPI,
+    PyTorchModelAPI,
+)
 from extract_prep.find_unstable_pair import FindUnstablePair
 
 
@@ -59,56 +63,36 @@ def setup_model(config: dict[str, Any], device: str = "cuda") -> nn.Module:
     return model
 
 
-class FindBBox:
-    def init(self, samples):
-        raise
-
-    def run(self, fn, bp):
-        before = fn(bp)
-        low = 0
-        high = bp.shape[2] // 2
-        while low + 1 < high:
-            print("Search", low, high)
-            mid = (high + low) // 2
-            bp2 = np.copy(bp)
-            bp2[:, :, mid] = 0
-            after = fn(bp2)
-            print("    ", after)
-            if np.all(before == after):
-                low = mid
-            else:
-                high = mid
-        print("Done", mid)
+def _pil_resize(
+    imgs: np.ndarray,
+    output_size: tuple[int, int] = (224, 224),
+    interp: str = "bilinear",
+) -> np.ndarray:
+    interp_mode = {
+        "nearest": Image.Resampling.NEAREST,
+        "bilinear": Image.Resampling.BILINEAR,
+        "bicubic": Image.Resampling.BICUBIC,
+    }[interp]
+    resized_imgs = []
+    for img in imgs:
+        img = img.transpose((1, 2, 0))
+        img = Image.fromarray(img).resize(output_size, interp_mode)
+        resized_imgs.append(np.array(img))
+    resized_imgs = np.stack(resized_imgs).transpose((0, 3, 1, 2))
+    return resized_imgs
 
 
-class FindImageSize:
+class FindPreprocessor:
     def __init__(
         self,
         classifier_api: ClassifyAPI,
-        orig_size: tuple[int, int] = (256, 256),
+        init_size: tuple[int, int] = (256, 256),
     ) -> None:
         self._classifier_api: ClassifyAPI = classifier_api
-        self._orig_size: tuple[int, int] = orig_size
+        self._init_size: tuple[int, int] = init_size
 
-    def _pil_resize(
-        self,
-        imgs: np.ndarray,
-        output_size: tuple[int, int] = (224, 224),
-        interp: str = "bilinear",
-    ) -> np.ndarray:
-        interp_mode = {
-            "nearest": Image.Resampling.NEAREST,
-            "bilinear": Image.Resampling.BILINEAR,
-            "bicubic": Image.Resampling.BICUBIC,
-        }[interp]
-        resized_imgs = []
-        for img in imgs:
-            img = img.transpose((1, 2, 0))
-            img = Image.fromarray(img).resize(output_size, interp_mode)
-            resized_imgs.append(np.array(img))
-        resized_imgs = np.stack(resized_imgs).transpose((0, 3, 1, 2))
-        return resized_imgs
 
+class FindResize(FindPreprocessor):
     def _torch_resize(
         self,
         imgs: np.ndarray,
@@ -128,8 +112,8 @@ class FindImageSize:
 
     def init(self, samples: np.ndarray) -> np.ndarray:
         # samples = skimage.transform.resize(samples, self._orig_size)
-        samples = self._pil_resize(
-            samples, output_size=self._orig_size, interp="nearest"
+        samples = _pil_resize(
+            samples, output_size=self._init_size, interp="nearest"
         )
         # FIXME: why is clipping needed?
         # return np.clip(samples, 30, 225)
@@ -156,7 +140,7 @@ class FindImageSize:
         unstable_pairs: np.ndarray,
         prep_params: dict[str, int | float | str] | None = None,
         num_steps: int = 50,
-    ):
+    ) -> bool:
         # 256x256 linear 18%
         # 256x256 bicubic 24%
         # 299x299 linear 20%
@@ -194,10 +178,105 @@ class FindImageSize:
         return np.all(before_labs == after_labs)
 
 
-# def cheat(x):
-#     return torch.stack(
-#         [transform(Image.fromarray(np.array(y, dtype=np.uint8))) for y in x]
-#     )
+class FindCrop(FindPreprocessor):
+    def init(self, samples: np.ndarray) -> np.ndarray:
+        samples = _pil_resize(
+            samples, output_size=self._init_size, interp="nearest"
+        )
+        return samples
+
+    def _guess(
+        self,
+        imgs: np.ndarray,
+        crop_size: int = 10,
+        border: str = "left",
+    ) -> np.ndarray:
+        imgs = np.copy(imgs)
+        if border in ("left", "right"):
+            noise = np.random.randint(
+                0, 256, size=imgs[:, :, :, :crop_size].shape
+            )
+            if border == "left":
+                imgs[:, :, :, :crop_size] = noise
+            else:
+                imgs[:, :, :, -crop_size:] = noise
+        else:
+            noise = np.random.randint(
+                0, 256, size=imgs[:, :, :crop_size, :].shape
+            )
+            if border == "top":
+                imgs[:, :, :crop_size, :] = noise
+            else:
+                imgs[:, :, -crop_size:, :] = noise
+        return imgs
+
+    def _binary_search(
+        self,
+        unstable_pairs: np.ndarray,
+        before: np.ndarray,
+        border: str = "left",
+    ) -> int:
+        """Binary search cropped size on a given border.
+
+        Args:
+            unstable_pairs: Unstable pair.
+            before: Original classification outcome.
+            border: Which border to search ("left", "top", "right", "bottom").
+                Defaults to "left".
+
+        Returns:
+            Number of pixels that are cropped from the given border.
+        """
+        print(f"Binary search {border} crop...")
+        _, _, height, width = unstable_pairs.shape
+        low = 0
+        high = width // 2 if border in ("left", "right") else height // 2
+
+        while low + 1 < high:
+            print("Search", low, high)
+            mid = (high + low) // 2
+            bp2 = self._guess(unstable_pairs, crop_size=mid, border=border)
+            after = self._classifier_api(bp2)
+            print("    ", after)
+            if np.all(before == after):
+                # If prediction does not change, increase cropped size
+                low = mid
+            else:
+                high = mid
+        print("Done", mid)
+        return low
+
+    def run(
+        self,
+        unstable_pairs: np.ndarray,
+        **kwargs,
+    ) -> tuple[int, int]:
+        del kwargs  # Unused
+        _, _, height, width = unstable_pairs.shape
+        assert height == width
+        before = self._classifier_api(unstable_pairs)
+
+        # Binary search left crop
+        left = self._binary_search(unstable_pairs, before, border="left")
+        if left == 0:
+            return unstable_pairs.shape[-2:]
+
+        # Quickly check right crop for odd/even size
+        found_right = False
+        for offset in [1, 0, -1]:
+            right = left + offset
+            guess = self._guess(unstable_pairs, crop_size=right, border="right")
+            if np.all(before == self._classifier_api(guess)):
+                found_right = True
+                break
+        # If there's no match, binary search right crop
+        if not found_right:
+            right = self._binary_search(unstable_pairs, before, border="right")
+
+        # TODO: Assume square crop and left = top and right = bottom
+        top, bottom = left, right
+
+        return (height - top - bottom, width - left - right)
 
 
 def _main(config: dict[str, int | float | str]) -> None:
@@ -220,73 +299,39 @@ def _main(config: dict[str, int | float | str]) -> None:
         f"shape {dataset.shape}!"
     )
 
-    # TODO: Get a classification pipeline
-    prep_model: PreprocessModel = setup_model(config, device="cuda")
-    clf_pipeline: ClassifyAPI = PyTorchModelAPI(prep_model)
-    # g = get_clarifai
-    # g(img1)
-    # exit(0)
+    # TODO: Get a classification pipeline\
+    if config["api"] == "local":
+        prep_model: PreprocessModel = setup_model(config, device="cuda")
+        clf_pipeline: ClassifyAPI = PyTorchModelAPI(prep_model)
+    elif config["api"] == "google":
+        clf_pipeline: ClassifyAPI = GoogleAPI()
+    else:
+        raise NotImplementedError(
+            f"{config['api']} classification API is not implemented!"
+        )
 
-    # Find unstable pair for img1 and img2
+    # attack = FindResize(clf_pipeline, init_size=orig_size)
+    attack = FindCrop(clf_pipeline, init_size=orig_size)
+    dataset = attack.init(dataset)
+
+    # Find unstable pair from dataset
     find_unstable_pair = FindUnstablePair(clf_pipeline)
     unstable_pairs: np.ndarray = find_unstable_pair.find_unstable_pair(dataset)
 
-    attack = FindImageSize(clf_pipeline, orig_size=orig_size)
-    dataset = attack.init(dataset)
+    # prep_params = {
+    #     "output_size": (224, 224),
+    #     "interp": "nearest",
+    # }
+    # num_trials: int = 20
+    # num_succeeds: int = 0
+    # for _ in tqdm(range(num_trials)):
+    #     is_successful = attack.run(
+    #         unstable_pairs, prep_params=prep_params, num_steps=100
+    #     )
+    #     num_succeeds += is_successful
+    # print(f"{num_succeeds}/{num_trials}")
 
-    # bpoints = np.array(find_better_boundary_points(g, attack.init([img2, img1])))
-    # attack.run(g, bpoints)
-
-    # bpoints = np.array(find_better_boundary_points(g, attack.init([img2, img1])))
-    # np.save("boundary_imagga2.npy", bpoints)
-    # bpoints = np.array(np.load("boundary_imagga.npy"))
-
-    prep_params = {
-        "output_size": (224, 224),
-        "interp": "nearest",
-    }
-    num_trials: int = 20
-    num_succeeds: int = 0
-    for _ in tqdm(range(num_trials)):
-        is_successful = attack.run(
-            unstable_pairs, prep_params=prep_params, num_steps=100
-        )
-        num_succeeds += is_successful
-    print(f"{num_succeeds}/{num_trials}")
-
-    exit(0)
-
-    # exit(0)
-    # return
-
-    # find_bbox(g, bpoints)
-    # return
-
-    bp = np.array(bpoints)
-
-    bpa = np.array(bp)
-    bpb = np.array(bp)
-    bpb[:, :, 0, :] = 0
-
-    before = g(bpa)
-
-    after = g(bpb)  #  + np.random.normal(0, .001, size=bpoints.shape))
-
-    print("bp is", before)
-    print("bp is", after)
-
-    print("mean same", np.mean(before == after))
-    return
-
-    img = np.zeros((256, 256, 3), dtype=np.uint8)
-    img[8:10, 8:10, 0] = 255
-
-    Image.fromarray(img).save("/tmp/a.jpg", "JPEG", quality=50)
-    r = Image.open("/tmp/a.jpg")
-    print(np.array(r)[:18, :18, 0])
-    print(np.array(r)[:, :, 0].mean(1))
-
-    out = model(transform(Image.fromarray(img))[None])
+    print(attack.run(unstable_pairs))
 
 
 """

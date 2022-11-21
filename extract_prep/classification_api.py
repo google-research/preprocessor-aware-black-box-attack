@@ -18,7 +18,6 @@ from __future__ import annotations
 import abc
 import io
 import json
-from typing import Any
 
 import numpy as np
 import requests
@@ -33,6 +32,8 @@ _TIMEOUT = 10
 
 
 class ClassifyAPI:
+    """Base ClassifyAPI wraps any classification pipeline."""
+
     def __init__(self, tmp_img_path: str = _TMP_IMG_PATH, **kwargs) -> None:
         self._tmp_img_path = tmp_img_path
 
@@ -44,17 +45,6 @@ class ClassifyAPI:
         if isinstance(images, np.ndarray) and images.ndim == 3:
             images = [images]
         return np.array([self._run_one(x) for x in images])
-
-
-def get_resnet(x, queries=[0]):
-    if isinstance(x, list) or len(x.shape) == 4:
-        o = model(cheat(x)).argmax(1).cpu().numpy()
-        queries[0] += len(x)
-        print("q", queries[0])
-        # print(o)
-        return o
-    else:
-        return get_resnet([x])[0]
 
 
 def get_imagga(img):

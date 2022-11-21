@@ -16,18 +16,18 @@
 from __future__ import annotations
 
 import torch
-from torch.nn import Identity, Module
+from torch.nn import Identity
 
 identity = Identity()
 
 
-class Preprocessor(Module):
+class Preprocessor:
     """Base Preprocessor module."""
 
     def __init__(
         self,
         params: dict[str, str | int | float],
-        input_size: tuple[int, int] | None,
+        input_size: tuple[int, int] | None = None,
         **kwargs,
     ):
         """Initialize default preprocessor which is just an identity.
@@ -36,7 +36,7 @@ class Preprocessor(Module):
             params: Params of preprocessors as a dictionary.
             input_size: Input image size (height, width). Defaults to None.
         """
-        super().__init__()
+        _ = params, kwargs  # Unused
         self.output_size: tuple[int, int] | None = input_size
         self.prep = identity
         self.inv_prep = identity
@@ -55,12 +55,5 @@ class Preprocessor(Module):
         """
         return self.prep, self.inv_prep, self.atk_prep, self.prepare_atk_img
 
-    def set_x_orig(self, x: torch.Tensor):
+    def set_x_orig(self, x_orig: torch.Tensor):
         """Keep original input in case some (inverse-)preprocessor needs it."""
-        pass
-
-    def forward(self, x: torch.Tensor):
-        raise NotImplementedError(
-            "forward() is not implemented! Use forward() from self.prep and "
-            "the other attributes instead."
-        )

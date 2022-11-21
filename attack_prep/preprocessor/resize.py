@@ -90,11 +90,15 @@ class Resize(Preprocessor):
 
         self.has_exact_project: bool = True
         self.pinv_mat: np.ndarray | None = None
+        self._setup_matrix(orig_size, final_size)
 
+    def _setup_matrix(
+        self, orig_size: tuple[int, int], final_size: tuple[int, int]
+    ) -> None:
         if self._interp == "nearest":
             x_temp = torch.arange(orig_size[0] ** 2).view((1,) + orig_size)
             z_temp = self.prep(x_temp)
-            self.register_buffer("prep_idx", z_temp.view(-1))
+            self._prep_idx = z_temp.view(-1)
         elif self._interp in ("bilinear", "bicubic"):
             print(f"=> Getting linear map for {self._interp} resize...")
             mat_name = (
@@ -103,7 +107,8 @@ class Resize(Preprocessor):
             if os.path.exists(mat_name):
                 print("  => Pre-computed mapping found!")
                 print(f"  => Loading a mapping from {mat_name}...")
-                mat, pinv_mat = pickle.load(open(mat_name, "rb"))
+                with open(mat_name, "rb") as file:
+                    mat, pinv_mat = pickle.load(file)
             else:
                 print(
                     "  => Computing a linear map from original space to "
@@ -153,13 +158,16 @@ class Resize(Preprocessor):
                     "  => Saving the mapping as a sparse matrix at "
                     f"{mat_name}..."
                 )
-                pickle.dump([mat, pinv_mat], open(mat_name, "wb"))
+                with open(mat_name, "wb") as file:
+                    pickle.dump([mat, pinv_mat], file)
 
             self.mat = mat.astype(np.float64)
         else:
             raise NotImplementedError(f"Invalid interp mode: {self._interp}.")
 
-    def project(self, z: torch.Tensor, x: torch.Tensor):
+    def project(
+        self, z_adv: torch.Tensor, x_orig: torch.Tensor
+    ) -> torch.Tensor:
         """Find projection of x onto z.
 
         This is the closed-form recovery phase for resizing. x represents the
@@ -172,16 +180,18 @@ class Resize(Preprocessor):
         Returns:
             Projection of x on z.
         """
-        batch_size, num_channels, _, _ = z.shape
-        x_shape = x.shape
+        batch_size, num_channels, _, _ = z_adv.shape
+        x_shape = x_orig.shape
         hx, wx = x_shape[2], x_shape[3]
         if self._interp == "nearest":
-            x = x.clone().view(batch_size, num_channels, -1)
-            x[:, :, self.prep_idx] = z.view(batch_size, num_channels, -1)
-            x = x.reshape(x_shape)
+            x_orig = x_orig.clone().view(batch_size, num_channels, -1)
+            x_orig[:, :, self._prep_idx] = z_adv.view(
+                batch_size, num_channels, -1
+            )
+            x_orig = x_orig.reshape(x_shape)
         else:
             if self.pinv_mat is not None:
-                z_ = z - self.prep(x)
+                z_ = z_adv - self.prep(x_orig)
                 # pylint: disable=unsubscriptable-object
                 delta = (
                     self.pinv_mat[None, None, :, :]
@@ -189,8 +199,10 @@ class Resize(Preprocessor):
                 ).sum(-1)
             else:
                 # Use iterative algorithm to find inverse of sparse matrix
-                delta = x.clone()
-                z_ = (z - self.prep(x)).cpu().numpy().astype(np.float64)
+                delta = x_orig.clone()
+                z_ = (
+                    (z_adv - self.prep(x_orig)).cpu().numpy().astype(np.float64)
+                )
                 # Iterate over batch
                 for i, zi in enumerate(z_):
                     # Iterate over channels
@@ -206,7 +218,7 @@ class Resize(Preprocessor):
                         delta[i, c] = torch.from_numpy(
                             out.astype(np.float32)
                         ).view(hx, wx)
-            x = x + delta.view(x_shape).to(z.device)
+            x_orig = x_orig + delta.view(x_shape).to(z_adv.device)
 
-        x.clamp_(0, 1)
-        return x
+        x_orig.clamp_(0, 1)
+        return x_orig

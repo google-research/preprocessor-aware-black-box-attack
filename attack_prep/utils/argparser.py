@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
         help="Name of ImageNet classifier to load from timm.",
     )
     parser.add_argument(
+        "--api",
+        default="local",
+        type=str,
+        help="Classification API to run extraction attack.",
+    )
+    parser.add_argument(
         "--preprocess", required=True, type=str, help="Specify preprocessor."
     )
     parser.add_argument(
