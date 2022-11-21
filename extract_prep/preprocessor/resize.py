@@ -86,7 +86,9 @@ class Resize(Preprocessor):
         )
         self.prepare_atk_img = self.prep if self._bypass else identity
 
-        self.has_exact_project: bool = self._interp in ("nearest", "bilinear")
+        # self.has_exact_project: bool = self._interp in ("nearest", "bilinear")
+        # self.has_exact_project: bool = True
+        self.has_exact_project: bool = False
         self.pinv_mat: np.ndarray | None = None
 
         if self._interp == "nearest":
@@ -168,10 +170,9 @@ class Resize(Preprocessor):
         else:
             if self.pinv_mat is not None:
                 z_ = z - self.prep(x)
+                # pylint: disable=unsubscriptable-object
                 delta = (
-                    self.pinv_mat[
-                        None, None, :, :
-                    ]  # pylint: disable=unsubscriptable-object
+                    self.pinv_mat[None, None, :, :]
                     * z_.view(batch_size, num_channels, 1, -1).cpu()
                 ).sum(-1)
             else:

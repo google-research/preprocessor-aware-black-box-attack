@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from art.estimators.classification import PyTorchClassifier
+from extract_prep.preprocessor import Preprocessor
 
 EPS = 1e-12
 
@@ -436,9 +437,16 @@ def binary_search_best_adv(
 
 
 def find_preimage(
-    args, ukp_model, kp_model, y, x_orig, z_adv, preprocess, verbose=False
-):
-    max_search_steps = args["binary_search_steps"]
+    args: dict[str, str | int | float],
+    ukp_model: torch.nn.Module,
+    kp_model: torch.nn.Module,
+    y: torch.Tensor,
+    x_orig: torch.Tensor,
+    z_adv: torch.Tensor,
+    preprocess: Preprocessor,
+    verbose: bool = False,
+) -> torch.Tensor:
+    max_search_steps: int = args["binary_search_steps"]
 
     if preprocess.has_exact_project:
         # Use exact projection if possible
@@ -493,7 +501,7 @@ def find_preimage(
     if verbose:
         mean_num_steps = num_steps_used.float().mean()
         print(f"=> Exponential search steps used (mean): {mean_num_steps:.2f}")
-        
+
     x = binary_search_best_adv(
         ukp_model,
         y,
