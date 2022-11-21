@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,13 +11,50 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Utility functions for all preprocessors."""
+
+from __future__ import annotations
+
+from typing import Any
+
 import torch
-import torch.nn as nn
+from torch import nn
 from torchvision import transforms
+
+from attack_prep.preprocessor.base import Preprocessor
 
 NEAREST = transforms.InterpolationMode.NEAREST
 BILINEAR = transforms.InterpolationMode.BILINEAR
 BICUBIC = transforms.InterpolationMode.BICUBIC
+
+
+def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
+    """Create preprocessor given config."""
+    # Dirty import here to avoid circular imports
+    # pylint: disable=import-outside-toplevel
+    from attack_prep.preprocessor.crop import Crop
+    from attack_prep.preprocessor.jpeg import JPEG
+    from attack_prep.preprocessor.neural import Neural
+    from attack_prep.preprocessor.quantize import Quantize
+    from attack_prep.preprocessor.resize import Resize
+    from attack_prep.preprocessor.resize_opt import ResizeOpt
+    from attack_prep.preprocessor.sequential import Sequential
+
+    if "-" in config["preprocess"]:
+        preprocessor_fn = Sequential
+    else:
+        preprocessor_fn = {
+            "identity": Preprocessor,
+            "quantize": Quantize,
+            "resize": Resize,
+            "resize-opt": ResizeOpt,
+            "crop": Crop,
+            "jpeg": JPEG,
+            "neural": Neural,
+        }[config["preprocess"]]
+
+    preprocess = preprocessor_fn(config, input_size=config["orig_size"])
+    return preprocess
 
 
 class ApplySequence(nn.Module):

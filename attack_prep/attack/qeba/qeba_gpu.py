@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,33 +11,41 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Implementation of QEBA attack (GPU version)."""
+
 from __future__ import division, print_function
 
 import math
 import time
 import warnings
+from typing import Callable
 
 import numpy as np
 import torch
 
-from ..base import Attack
-from .util import load_pgen
+from attack_prep.attack.base import Attack
+from attack_prep.attack.qeba.util import load_pgen
+
+_EPS = 1e-9
 
 
-def cos_sim(x1, x2):
+def _cos_sim(x1, x2):
     cos = (x1 * x2).sum() / np.sqrt((x1**2).sum() * (x2**2).sum())
     return cos
 
 
 class QEBA(Attack):
+    """QEBA attack."""
+
     def __init__(
         self,
-        model,
-        args,
-        substract_steps=0,
-        preprocess=None,
-        prep_backprop=False,
-        prep_proj=False,
+        model: torch.nn.Module,
+        args: dict[str, str | int | float],
+        substract_steps: int = 0,
+        preprocess: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        prep_backprop: bool = False,
+        prep_proj: bool = False,
+        smart_noise: Callable[..., np.ndarray] | None = None,
         **kwargs,
     ):
         super().__init__(model, args, **kwargs)
@@ -62,6 +70,7 @@ class QEBA(Attack):
         self.prep_proj = prep_proj
         if prep_proj or prep_backprop:
             assert preprocess is not None
+        self.smart_noise = smart_noise
 
     def run(self, imgs, labels, tgt=None, **kwargs):
         if tgt is None:
@@ -71,25 +80,21 @@ class QEBA(Attack):
         x_adv = imgs.clone()
         src_images, src_labels = tgt
         for i, _ in enumerate(src_images):
-            x_adv[i] = self.attack(imgs[i], src_images[i], src_labels[i])
+            x_adv[i] = self._attack(imgs[i], src_images[i], src_labels[i])
         return x_adv
 
-    def gen_random_basis(self, N, device):
+    def _gen_random_basis(self, N, device):
         basis = torch.randn((N, *self.shape), device=device)
         return basis
 
-    def gen_custom_basis(self, N, sample):
+    def _gen_custom_basis(self, N, sample):
         if self.rv_generator is not None:
             basis = self.rv_generator.generate_ps(sample, N, self.atk_level)
         else:
-            basis = self.gen_random_basis(N, sample.device)
+            basis = self._gen_random_basis(N, sample.device)
         return basis.to(self.internal_dtype)
 
-    def attack(self, img, src_img, src_label):
-        """
-        iterations : int
-            Maximum number of iterations to run.
-        """
+    def _attack(self, img, src_img, src_label):
         self.external_dtype = img.dtype
         self.logger = []
 
@@ -102,7 +107,7 @@ class QEBA(Attack):
         else:
             self.theta = self.gamma / (self.d)
 
-        self.printv("QEBA optimized for {} distance".format(self.constraint))
+        self._printv("QEBA optimized for {} distance".format(self.constraint))
         self.t_initial = time.time()
 
         # ===========================================================
@@ -157,22 +162,19 @@ class QEBA(Attack):
         t0 = time.time()
 
         # Project the initialization to the boundary.
-        perturbed, dist_post_update, mask_succeed = self.binary_search_batch(
+        perturbed, dist_post_update, mask_succeed = self._binary_search_batch(
             original, perturbed.unsqueeze(0), decision_function
         )
 
-        dist = self.compute_distance(perturbed, original)
+        dist = self._compute_distance(perturbed, original)
         self.time_search += time.time() - t0
 
-        # log starting point
-        # self.log_step(0, distance, a=a, perturbed=perturbed)
         if mask_succeed > 0:
-            # self.log_time()
             return
 
         prev_best_perturbed = None
 
-        ### Decision boundary direction ###
+        # Decision boundary direction
         for step in range(1, self.iterations + 1):
 
             t0 = time.time()
@@ -180,7 +182,7 @@ class QEBA(Attack):
             # Gradient direction estimation.
             # ===========================================================
             # Choose delta.
-            delta = self.select_delta(dist_post_update, step)
+            delta = self._select_delta(dist_post_update, step)
 
             # Choose number of evaluations.
             num_evals = int(
@@ -193,7 +195,7 @@ class QEBA(Attack):
                 perturbed = self.preprocess(perturbed)
 
             # approximate gradient.
-            gradf, _ = self.approximate_gradient(
+            gradf, _ = self._approximate_gradient(
                 decision_function, perturbed, num_evals, delta
             )
 
@@ -209,7 +211,7 @@ class QEBA(Attack):
             # ===========================================================
             if self.stepsize_search == "geometric_progression":
                 # find step size.
-                epsilon = self.geometric_progression_for_stepsize(
+                epsilon = self._geometric_progression_for_stepsize(
                     perturbed, update, dist, decision_function, step
                 )
 
@@ -222,7 +224,7 @@ class QEBA(Attack):
                     perturbed,
                     dist_post_update,
                     mask_succeed,
-                ) = self.binary_search_batch(
+                ) = self._binary_search_batch(
                     original, perturbed[None], decision_function
                 )
 
@@ -243,7 +245,7 @@ class QEBA(Attack):
                         perturbed,
                         dist_post_update,
                         mask_succeed,
-                    ) = self.binary_search_batch(
+                    ) = self._binary_search_batch(
                         original, perturbeds[idx_perturbed], decision_function
                     )
             t2 = time.time()
@@ -254,7 +256,7 @@ class QEBA(Attack):
             prev_best_perturbed = perturbed.clone()
 
             # compute new distance.
-            dist = self.compute_distance(perturbed, original)
+            dist = self._compute_distance(perturbed, original)
 
             # ===========================================================
             # Log the step
@@ -264,7 +266,7 @@ class QEBA(Attack):
             #               update=update*epsilon, aux_info=(gradf, None, dist_dir, rho))
             # self.printv("Call in grad approx / geo progress / binary search: %d/%d/%d" % (c1-c0, c2-c1, c3-c2))
             if step % self.log_every_n_steps == 0:
-                self.printv("Step {}: {:.5e} {}".format(step, dist, message))
+                self._printv("Step {}: {:.5e} {}".format(step, dist, message))
 
             if mask_succeed > 0:
                 break
@@ -272,10 +274,10 @@ class QEBA(Attack):
         # ===========================================================
         # Log overall runtime
         # ===========================================================
-        self.log_time()
+        self._log_time()
         return prev_best_perturbed
 
-    def compute_distance(self, x1, x2):
+    def _compute_distance(self, x1, x2):
         use_batch = (x1.ndim > 3) or (x2.ndim > 3)
         if x1.ndim == 3:
             x1 = x1.unsqueeze(0)
@@ -291,7 +293,7 @@ class QEBA(Attack):
             dist = diff.reshape(batch_size, -1).abs().max(1)[0]
         return dist if use_batch else dist[0]
 
-    def project(self, unperturbed, perturbed_inputs, alphas):
+    def _project(self, unperturbed, perturbed_inputs, alphas):
         """Projection onto given l2 / linf balls in a batch."""
         alphas_shape = [len(alphas)] + [1] * len(self.shape)
         alphas = alphas.reshape(alphas_shape)
@@ -304,14 +306,16 @@ class QEBA(Attack):
             )
         return projected
 
-    def binary_search_batch(
+    def _binary_search_batch(
         self, unperturbed, perturbed_inputs, decision_function
     ):
         """Binary search to approach the boundary."""
         device = perturbed_inputs.device
 
         # Compute distance between each of perturbed and unperturbed input.
-        dists_post_update = self.compute_distance(unperturbed, perturbed_inputs)
+        dists_post_update = self._compute_distance(
+            unperturbed, perturbed_inputs
+        )
 
         # Choose upper thresholds in binary searchs based on constraint.
         if self.constraint == "linf":
@@ -330,29 +334,26 @@ class QEBA(Attack):
         while torch.max((highs - lows) / thresholds) > 1:
             # projection to mids.
             mids = (highs + lows) / 2.0
-            mid_inputs = self.project(unperturbed, perturbed_inputs, mids)
+            mid_inputs = self._project(unperturbed, perturbed_inputs, mids)
 
             # Update highs and lows based on model decisions.
             decisions = decision_function(mid_inputs)
             lows = torch.where(decisions == 0, mids, lows)
             highs = torch.where(decisions == 1, mids, highs)
 
-        out_inputs = self.project(unperturbed, perturbed_inputs, highs)
+        out_inputs = self._project(unperturbed, perturbed_inputs, highs)
 
         # Compute distance of the output to select the best choice.
         # (only used when stepsize_search is grid_search.)
-        dists = self.compute_distance(unperturbed, out_inputs)
+        dists = self._compute_distance(unperturbed, out_inputs)
         idx = dists.argmin()
 
         dist = dists_post_update[idx]
         out = out_inputs[idx]
         return out, dist, False
 
-    def select_delta(self, dist_post_update, current_iteration):
-        """
-        Choose the delta at the scale of distance
-        between x and perturbed sample.
-        """
+    def _select_delta(self, dist_post_update, current_iteration):
+        """Choose delta at scale of distance between x and perturbed sample."""
         if current_iteration == 1:
             delta = 0.1 * (self.clip_max - self.clip_min)
         else:
@@ -363,22 +364,34 @@ class QEBA(Attack):
 
         return delta
 
-    def approximate_gradient(self, decision_function, sample, num_evals, delta):
-        """Gradient direction estimation"""
-        _EPS = 1e-9
+    def _approximate_gradient(
+        self, decision_function, sample, num_evals, delta
+    ):
+        """Gradient direction estimation."""
         axis = tuple(range(1, 1 + len(self.shape)))
-        rv = self.gen_custom_basis(num_evals, sample)
+
+        if self.smart_noise is not None:
+            rv = self.smart_noise(sample, num_evals)
+            rv = torch.from_numpy(rv).to(sample.device)
+        else:
+            rv = self._gen_custom_basis(num_evals, sample)
 
         rv /= (rv**2).sum(dim=axis, keepdim=True).sqrt() + _EPS
         perturbed = sample + delta * rv
         perturbed.clamp_(self.clip_min, self.clip_max)
+
         # EDIT: apply preprocess if specified
         if self.preprocess is not None:
             perturbed = self.preprocess(perturbed)
             if self.prep_backprop:
+                temp_sample = sample.clone()
                 with torch.enable_grad():
-                    sample.requires_grad_()
-                    out = self.preprocess(sample.unsqueeze(0))
+                    temp_sample.requires_grad_()
+                    out = self.preprocess(temp_sample.unsqueeze(0))
+                sample = out.squeeze(0)
+            else:
+                sample = self.preprocess(sample.unsqueeze(0)).squeeze(0)
+
         rv = (perturbed - sample) / delta
 
         # query the model.
@@ -396,19 +409,20 @@ class QEBA(Attack):
         if self.preprocess is not None and self.prep_backprop:
             with torch.enable_grad():
                 out.backward(gradf.unsqueeze(0))
-                gradf = sample.grad.detach()
+                gradf = temp_sample.grad.detach()
         sample = sample.detach()
 
         # Get the gradient direction.
         gradf /= gradf.norm() + _EPS
         return gradf, fval.mean()
 
-    def geometric_progression_for_stepsize(
+    def _geometric_progression_for_stepsize(
         self, x, update, dist, decision_function, current_iteration
     ):
         """Geometric progression to search for stepsize.
-        Keep decreasing stepsize by half until reaching
-        the desired side of the boundary.
+
+        Keep decreasing stepsize by half until reaching the desired side of the
+        boundary.
         """
         epsilon = dist / np.sqrt(current_iteration)
         while True:
@@ -450,7 +464,7 @@ class QEBA(Attack):
     #         self.printv("\tEstimated vs. Distance: %.6f" % cos_distpred)
     #         self.printv("\tGT vs. Distance: %.6f" % cos_distgt)
 
-    def log_time(self):
+    def _log_time(self):
         if not self.verbose:
             return
         t_total = time.time() - self.t_initial
@@ -458,23 +472,23 @@ class QEBA(Attack):
         rel_gradient_estimation = self.time_gradient_estimation / t_total
         rel_search = self.time_search / t_total
 
-        self.printv("Time since beginning: {:.5f}".format(t_total))
-        self.printv(
+        self._printv("Time since beginning: {:.5f}".format(t_total))
+        self._printv(
             "   {:2.1f}% for initialization ({:.5f})".format(
                 rel_initialization * 100, self.time_initialization
             )
         )
-        self.printv(
+        self._printv(
             "   {:2.1f}% for gradient estimation ({:.5f})".format(
                 rel_gradient_estimation * 100, self.time_gradient_estimation
             )
         )
-        self.printv(
+        self._printv(
             "   {:2.1f}% for search ({:.5f})".format(
                 rel_search * 100, self.time_search
             )
         )
 
-    def printv(self, *args, **kwargs):
+    def _printv(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)

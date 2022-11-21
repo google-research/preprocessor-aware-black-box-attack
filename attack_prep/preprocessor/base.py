@@ -13,20 +13,22 @@
 
 """Base preprocessor module."""
 
+from __future__ import annotations
+
 import torch
-from torch.nn import Module, Identity
+from torch.nn import Identity
 
 identity = Identity()
 
 
-class Preprocessor(Module):
+class Preprocessor:
     """Base Preprocessor module."""
 
     def __init__(
         self,
-        params: dict[str, str, int, float],
-        input_size: tuple[int, int] | None,
-        **kwargs
+        params: dict[str, str | int | float],
+        input_size: tuple[int, int] | None = None,
+        **kwargs,
     ):
         """Initialize default preprocessor which is just an identity.
 
@@ -34,14 +36,14 @@ class Preprocessor(Module):
             params: Params of preprocessors as a dictionary.
             input_size: Input image size (height, width). Defaults to None.
         """
-        super().__init__()
+        _ = params, kwargs  # Unused
+        self.output_size: tuple[int, int] | None = input_size
         self.prep = identity
         self.inv_prep = identity
         self.atk_prep = identity
         self.prepare_atk_img = identity
-        self.output_size = input_size
         self.atk_to_orig = identity
-        self.has_exact_project = False
+        self.has_exact_project: bool = False
 
     def get_prep(self):
         """Return all preprocessing functions.
@@ -53,6 +55,5 @@ class Preprocessor(Module):
         """
         return self.prep, self.inv_prep, self.atk_prep, self.prepare_atk_img
 
-    def set_x_orig(self, x: torch.Tensor):
+    def set_x_orig(self, x_orig: torch.Tensor):
         """Keep original input in case some (inverse-)preprocessor needs it."""
-        pass

@@ -10,3 +10,16 @@
 # * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
+
+from attack_prep.preprocessor.base import Preprocessor, identity
+from attack_prep.preprocessor.diffjpeg import DiffJPEG
+
+
+class JPEG(Preprocessor):
+    def __init__(self, params, **kwargs):
+        super().__init__(params, **kwargs)
+        quality = params["jpeg_quality"]
+        self.prep = DiffJPEG(differentiable=True, quality=quality).cuda()
+        self.inv_prep = identity
+        self.atk_prep = self.prep
+        self.prepare_atk_img = identity
