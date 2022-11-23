@@ -88,7 +88,7 @@ class Resize(Preprocessor):
         )
         self.prepare_atk_img = self.prep if self._bypass else identity
 
-        self.has_exact_project: bool = self._interp in ("nearest", "bilinear")
+        self.has_exact_project: bool = True
         self.pinv_mat: np.ndarray | None = None
         self._setup_matrix(orig_size, final_size)
 
@@ -191,7 +191,7 @@ class Resize(Preprocessor):
             x_orig = x_orig.reshape(x_shape)
         else:
             if self.pinv_mat is not None:
-                z_ = z - self.prep(x)
+                z_ = z_adv - self.prep(x_orig)
                 delta = (
                     self.pinv_mat[
                         None, None, :, :

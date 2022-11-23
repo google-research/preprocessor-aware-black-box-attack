@@ -16,7 +16,7 @@
 import os
 from functools import partial
 
-from run_preprocess_attack import parse_args, run_one_setting
+from preprocess_attack_main import parse_args, run_one_setting
 
 print = partial(print, flush=True)  # pylint: disable=redefined-builtin
 

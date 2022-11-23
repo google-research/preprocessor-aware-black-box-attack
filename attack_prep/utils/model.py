@@ -11,11 +11,37 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-import torch.nn as nn
+"""Model utility functions."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import timm
+import torch
+from torch import nn
+
+from attack_prep.preprocessor.base import Preprocessor
+from attack_prep.preprocessor.util import setup_preprocessor
 
 
 class PreprocessModel(nn.Module):
-    def __init__(self, base_model, preprocess=None, normalize=None):
+    """Classification pipeline with preprocessors."""
+
+    def __init__(
+        self,
+        base_model: nn.Module,
+        preprocess: nn.Module | None = None,
+        normalize: dict[str, tuple[float, float, float]] | None = None,
+    ) -> None:
+        """Initialize PreprocessorModel.
+
+        Args:
+            base_model: Base plain classifier.
+            preprocess: Preprocessor module. Defaults to None.
+            normalize: Mean and standard deviation input normalization.
+                Defaults to None.
+        """
         super().__init__()
         self.base_model = base_model
         self.preprocess = preprocess
@@ -28,12 +54,35 @@ class PreprocessModel(nn.Module):
                 normalize["std"][None, :, None, None], requires_grad=False
             )
 
-    def forward(self, x):
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Apply preprocessing and then model."""
         if self.preprocess is not None:
-            x = x.clamp(0, 1)
-            x = self.preprocess(x)
-        x = x.clamp(0, 1)
+            inputs = inputs.clamp(0, 1)
+            inputs = self.preprocess(inputs)
+        inputs = inputs.clamp(0, 1)
         if self.normalize is not None:
-            x = (x - self.mean) / self.std
-        out = self.base_model(x)
+            inputs = (inputs - self.mean) / self.std
+        out = self.base_model(inputs)
         return out
+
+
+def setup_model(
+    config: dict[str, Any], device: str = "cuda"
+) -> tuple[nn.Module, Preprocessor]:
+    """Set up plain PyTorch ImageNet classifier from timm."""
+    normalize = dict(
+        mean=torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32),
+        std=torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32),
+    )
+    model = timm.create_model(config["model_name"], pretrained=True)
+    preprocess = setup_preprocessor(config)
+    prep = preprocess.get_prep()[0]
+
+    # Initialize models with known and unknown preprocessing
+    model = (
+        PreprocessModel(model, preprocess=prep, normalize=normalize)
+        .eval()
+        .to(device)
+    )
+    model = nn.DataParallel(model).eval().to(device)
+    return model, preprocess

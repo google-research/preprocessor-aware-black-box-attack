@@ -17,50 +17,21 @@ from __future__ import annotations
 
 import os
 import random
-from typing import Any
 
 import numpy as np
-import timm
 import torch
 from PIL import Image
-from torch import nn
 from torchvision import transforms
-from tqdm import tqdm
 
-from attack_prep.preprocessor.util import (
-    BICUBIC,
-    BILINEAR,
-    NEAREST,
-    setup_preprocessor,
-)
+from attack_prep.preprocessor.util import BICUBIC, BILINEAR, NEAREST
 from attack_prep.utils.argparser import parse_args
-from attack_prep.utils.model import PreprocessModel
+from attack_prep.utils.model import PreprocessModel, setup_model
 from extract_prep.classification_api import (
     ClassifyAPI,
     GoogleAPI,
     PyTorchModelAPI,
 )
 from extract_prep.find_unstable_pair import FindUnstablePair
-
-
-def setup_model(config: dict[str, Any], device: str = "cuda") -> nn.Module:
-    """Set up plain PyTorch ImageNet classifier from timm."""
-    normalize = dict(
-        mean=torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32),
-        std=torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32),
-    )
-    model = timm.create_model(config["model_name"], pretrained=True)
-    preprocess = setup_preprocessor(config)
-    prep = preprocess.get_prep()[0]
-
-    # Initialize models with known and unknown preprocessing
-    model = (
-        PreprocessModel(model, preprocess=prep, normalize=normalize)
-        .eval()
-        .to(device)
-    )
-    model = nn.DataParallel(model).eval().to(device)
-    return model
 
 
 def _pil_resize(

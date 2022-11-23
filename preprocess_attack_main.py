@@ -15,9 +15,9 @@
 
 from __future__ import annotations
 
-import argparse
 import os
 import pickle
+import pprint
 import random
 import sys
 import time
@@ -33,8 +33,8 @@ from torch.backends import cudnn
 
 from attack_prep.attack import ATTACK_DICT, smart_noise
 from attack_prep.attack.util import find_preimage, select_targets
-from attack_prep.preprocessor import PREPROCESSORS, Sequential
 from attack_prep.preprocessor.base import Preprocessor
+from attack_prep.preprocessor.util import setup_preprocessor
 from attack_prep.utils.argparser import parse_args
 from attack_prep.utils.dataloader import get_dataloader
 from attack_prep.utils.model import PreprocessModel
@@ -145,29 +145,8 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
         "std": torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32),
     }
     base_model: nn.Module = timm.create_model("resnet18", pretrained=True)
-
-    # Set up preprocessing
-    if "-" in config["preprocess"]:
-        prep_init = Sequential
-    else:
-        prep_init = PREPROCESSORS[config["preprocess"]]
-    preprocess: Preprocessor = prep_init(config, input_size=config["orig_size"])
+    preprocess: Preprocessor = setup_preprocessor(config)
     prep, _, atk_prep, prepare_atk_img = preprocess.get_prep()
-
-    use_wrong_prep: int = config["mismatch_prep"] is not None
-    wrong_preprocess: Preprocessor | None = None
-    if use_wrong_prep:
-        print(
-            f"=> Simulating mismatched preprocessing: "
-            f'{config["mismatch_prep"]}'
-        )
-        wrong_args = deepcopy(config)
-        wrong_args["resize_out_size"] = int(
-            config["mismatch_prep"].split("-")[0]
-        )
-        wrong_args["resize_interp"] = config["mismatch_prep"].split("-")[1]
-        wrong_preprocess = prep_init(wrong_args, input_size=config["orig_size"])
-        _, _, _, prepare_atk_img = wrong_preprocess.get_prep()
 
     # Initialize models with known and unknown preprocessing
     ukp_model: PreprocessModel = (
@@ -183,6 +162,22 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
     ukp_model: nn.Module = nn.DataParallel(ukp_model).eval().to(device)
     kp_model: nn.Module = nn.DataParallel(kp_model).eval().to(device)
 
+    # Used for testing attacks with our guess on the preprocessor is wrong
+    use_wrong_prep: int = config["mismatch_prep"] is not None
+    wrong_preprocess: Preprocessor | None = None
+    if use_wrong_prep:
+        print(
+            f"=> Simulating mismatched preprocessing: "
+            f'{config["mismatch_prep"]}'
+        )
+        wrong_config = deepcopy(config)
+        wrong_config["resize_out_size"] = int(
+            config["mismatch_prep"].split("-")[0]
+        )
+        wrong_config["resize_interp"] = config["mismatch_prep"].split("-")[1]
+        wrong_preprocess: Preprocessor = setup_preprocessor(wrong_config)
+        _, _, _, prepare_atk_img = wrong_preprocess.get_prep()
+
     validloader: _DataLoader = get_dataloader(config)
     # Create another dataloader for targeted attacks
     targeted_dataloader: _DataLoader | None = None
@@ -192,6 +187,7 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
         copy_args["batch_size"] = 1
         targeted_dataloader = get_dataloader(copy_args)
 
+    # Set up Gao et al. Smart Noise attack
     snoise: smart_noise.SmartNoise | None = None
     if config["smart_noise"]:
         snoise = _setup_smart_noise(
@@ -408,7 +404,8 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
         torchvision.utils.save_image(x_adv_ukp[:32], "x_adv_ukp.png")
         torchvision.utils.save_image(z_adv_kp[:32], "z_adv_kp.png")
 
-    pickle.dump(output_dict, open(savename + ".pkl", "wb"))
+    with open(savename + ".pkl", "wb") as file:
+        pickle.dump(output_dict, file)
     print("Finished.")
 
 
@@ -454,7 +451,7 @@ def run_one_setting(config):
         sys.stdout = open(path + ".out", "w", encoding="utf-8")
         sys.stderr = sys.stdout
 
-    print(config)
+    pprint.pprint(config)
     _main(config, path)
 
 

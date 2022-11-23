@@ -23,6 +23,7 @@ from attack_prep.preprocessor.base import Preprocessor, identity
 
 class Quant(nn.Module):
     def __init__(self, num_bits: int) -> None:
+        super().__init__()
         self.num_bits: int = num_bits
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

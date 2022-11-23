@@ -11,17 +11,21 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
-"""
-This code implements differentiable JPEG compression and is modified from
-https://github.com/mlomnitz/DiffJPEG/blob/master/DiffJPEG.py.
+"""Differentiable JPEG compression.
+
+This code is modified from https://github.com/mlomnitz/DiffJPEG/blob/master/DiffJPEG.py.
 Now `quality` can vary between samples in the same batch.
 """
 
 import torch
 import torch.nn as nn
-from .compression import compress_jpeg
-from .decompression import decompress_jpeg
-from .utils import diff_round, quality_to_factor
+
+from attack_prep.preprocessor.diffjpeg.compression import compress_jpeg
+from attack_prep.preprocessor.diffjpeg.decompression import decompress_jpeg
+from attack_prep.preprocessor.diffjpeg.utils import (
+    diff_round,
+    quality_to_factor,
+)
 
 
 class DiffJPEG(nn.Module):
@@ -33,7 +37,7 @@ class DiffJPEG(nn.Module):
                 rounding function, if false uses standrard torch.round
             quality(float): Quality factor for jpeg compression scheme.
         """
-        super(DiffJPEG, self).__init__()
+        super().__init__()
         if differentiable:
             rounding = diff_round
         else:

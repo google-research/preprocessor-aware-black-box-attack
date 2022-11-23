@@ -13,23 +13,28 @@
 
 """Sequence of preprocessors."""
 
+from __future__ import annotations
+
+import copy
+
 from attack_prep.preprocessor.base import Preprocessor
-from attack_prep.preprocessor.util import ApplySequence
+from attack_prep.preprocessor.util import ApplySequence, setup_preprocessor
 
 
 class Sequential(Preprocessor):
     def __init__(self, params, **kwargs):
         super().__init__(params, **kwargs)
-        from attack_prep.preprocessor import PREPROCESSORS
-
         # Get list of preprocessings from params
         preps = params["preprocess"].split("-")
         prep_list = []
         for prep in preps:
+            temp_params = copy.deepcopy(params)
             input_size = (
                 prep_list[-1].output_size if len(prep_list) > 0 else None
             )
-            prep_list.append(PREPROCESSORS[prep](params, input_size=input_size))
+            temp_params["preprocess"] = prep
+            temp_params["orig_size"] = input_size
+            prep_list.append(setup_preprocessor(temp_params))
 
         prep = [p.prep for p in prep_list]
         inv_prep = [p.inv_prep for p in prep_list][::-1]

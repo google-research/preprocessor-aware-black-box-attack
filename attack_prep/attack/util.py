@@ -11,6 +11,10 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Common attack utilities."""
+
+from __future__ import annotations
+
 import contextlib
 import math
 import random
@@ -19,12 +23,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 from art.estimators.classification import PyTorchClassifier
-from extract_prep.preprocessor import Preprocessor
+
+from attack_prep.preprocessor.base import Preprocessor
 
 _EPS = 1e-12
 
 
 def setup_art(args, model, input_size):
+    """Set up model for ART."""
     art_model = PyTorchClassifier(
         model=model,
         clip_values=(0, 1),
@@ -35,10 +41,11 @@ def setup_art(args, model, input_size):
     return art_model
 
 
-def set_random_seed(seed):
+def set_random_seed(seed: int) -> None:
     """Set random seed for random, numpy, and torch.
+
     Args:
-        seed (int): random seed to set
+        seed: Random seed to set
     """
     assert isinstance(seed, int)
     random.seed(seed)
@@ -49,7 +56,7 @@ def set_random_seed(seed):
 
 
 @contextlib.contextmanager
-def set_temp_seed(seed, devices=None):
+def set_temp_seed(seed: int, devices=None):
     """Temporary sets numpy seed within a context."""
     # ====================== Save original random state ===================== #
     rand_state = random.getstate()
@@ -80,7 +87,11 @@ def set_temp_seed(seed, devices=None):
             torch.cuda.set_rng_state(gpu_rng_state, device)
 
 
-def select_targets(model, dataloader, labels):
+def select_targets(
+    model: nn.Module,
+    dataloader: torch.utils.data.DataLoader,
+    labels: torch.Tensor,
+):
     """Assume that `model` correctly classifies `images` as `labels`."""
     device = labels.device
     src_images, src_labels = [], []
@@ -108,19 +119,23 @@ def select_targets(model, dataloader, labels):
     return src_images, src_labels
 
 
-def check_match(x1, x2):
+def _check_match(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     # NOTE: aim for 1/255 per pixel (or half that)
-    return (squared_error(x1, x2, ord="2") < 1e-3).cpu()
+    return (_squared_error(x1, x2, ord="2") < 1e-3).cpu()
 
 
-def squared_error(x1, x2, ord="2"):
+def _squared_error(x1: torch.Tensor, x2: torch.Tensor, ord: str = "2"):
     # TODO: inf
     if ord == "2":
         return ((x1 - x2) ** 2).sum((1, 2, 3))
 
 
-def overshoot(x_from, x_to, dist):
-    """Find a point by moving `x_to` in the direction from `x_from` to `x_to`
+def _overshoot(
+    x_from: torch.Tensor, x_to: torch.Tensor, dist: float
+) -> torch.Tensor:
+    """Overshoot sample sligtly in one direction.
+
+    Find a point by moving `x_to` in the direction from `x_from` to `x_to`
     by `dist` distance. `x_from` and `x_to` are assumed to be 4D tensor with
     the first dimension being the batch.
     """
@@ -145,7 +160,9 @@ def _to_attack_space(x, min_, max_):
 
 def _to_model_space(x, min_, max_):
     """Transforms an input from the attack space to the model space.
-    This transformation and the returned gradient are elementwise."""
+
+    This transformation and the returned gradient are elementwise.
+    """
     # from (-inf, +inf) to (-1, +1)
     x = torch.tanh(x)
 
@@ -156,7 +173,7 @@ def _to_model_space(x, min_, max_):
     return x
 
 
-def find_nearest_preimage(
+def _find_nearest_preimage(
     args,
     model,
     y,
@@ -201,8 +218,8 @@ def find_nearest_preimage(
     condition = {
         "misclassify": lambda x: model(x).argmax(-1) != y,
         "targeted": lambda x: model(x).argmax(-1) == y,
-        "dist_to_orig": lambda x: squared_error(x, x_orig) <= max_eps,
-        "dist_to_adv": lambda x: check_match(preprocess(x), z_adv),
+        "dist_to_orig": lambda x: _squared_error(x, x_orig) <= max_eps,
+        "dist_to_adv": lambda x: _check_match(preprocess(x), z_adv),
     }[criteria]
 
     def success_cond(x):
@@ -247,9 +264,9 @@ def find_nearest_preimage(
             for j in range(num_opt_steps):
                 optimizer.zero_grad()
                 x_pre = _to_model_space(a_pre, 0, 1)
-                dist_orig = squared_error(x_pre, x_orig, ord=args["ord"])
+                dist_orig = _squared_error(x_pre, x_orig, ord=args["ord"])
                 dist_orig *= scale_dim_x
-                dist_prep = squared_error(preprocess(x_pre), z_adv, ord="2")
+                dist_prep = _squared_error(preprocess(x_pre), z_adv, ord="2")
                 dist_prep *= scale_dim_z
                 # This should be sum because we want the learning rate to
                 # effectively scale with batch size
@@ -328,20 +345,21 @@ def find_nearest_preimage(
     return best_x_pre.detach().to(orig_dtype), success_idx
 
 
-def expo_search_adv(
-    model,
-    y,
-    x_orig,
-    x_adv,
-    num_steps=10,
-    init_step=None,
-    targeted=False,
-    factor=10,
-    verbose=False,
-):
-    """
-    Exponential search in the adversarial direction to make the attacks succeed
-    as many as possible.
+def _expo_search_adv(
+    model: nn.Module,
+    y: torch.Tensor,
+    x_orig: torch.Tensor,
+    x_adv: torch.Tensor,
+    num_steps: int = 10,
+    init_step: int | None = None,
+    targeted: bool = False,
+    factor: float = 10,
+    verbose: bool = False,
+) -> tuple[torch.Tensor, int, torch.Tensor]:
+    """Exponential search in the adversarial direction.
+
+    This deals with numerical instability when inputs lie very close to decision
+    boundary. This ensures attacks succeed as much as possible.
     """
     success_idx = model(x_adv).argmax(-1) != y
     if targeted:
@@ -381,7 +399,7 @@ def expo_search_adv(
     return x_expo, num_steps_used, new_lo
 
 
-def binary_search_best_adv(
+def _binary_search_best_adv(
     model,
     y,
     x_orig,
@@ -427,17 +445,11 @@ def binary_search_best_adv(
         best_lmbda[update_idx] = lmbda[update_idx]
         num_steps_used += 1
         bs_update_idx |= update_idx
-        # DEBUG
-        # print(~fail_idx)
-        # print(lmbda)
-        # print(best_lmbda)
-        # print(update_idx)
-        # import pdb
-        # pdb.set_trace()
 
     if verbose:
         print(
-            f"=> Samples updated by binary search: {bs_update_idx.sum()}/{len(y)}"
+            "=> # samples updated by binary search: "
+            f"{bs_update_idx.sum()}/{len(y)}"
         )
 
     return best_lmbda * x_adv + (1 - best_lmbda) * x_orig
@@ -453,6 +465,7 @@ def find_preimage(
     preprocess: Preprocessor,
     verbose: bool = False,
 ) -> torch.Tensor:
+    """Recovery step of the Bypassing and the Biased-Gradient Attacks."""
     max_search_steps: int = args["binary_search_steps"]
 
     if preprocess.has_exact_project:
@@ -466,7 +479,7 @@ def find_preimage(
     else:
         # Otherwise, run optimization-based projection to find the nearest
         # pre-image to z_adv. First, overshoot to reduce instability.
-        z_adv_os = overshoot(preprocess.prep(x_orig), z_adv, 1e-2)
+        z_adv_os = _overshoot(preprocess.prep(x_orig), z_adv, 1e-2)
         z_adv_os.clamp_(0, 1)
         os_fail = kp_model(z_adv_os).argmax(-1) == y
         if args["targeted"]:
@@ -477,7 +490,7 @@ def find_preimage(
 
         if verbose:
             print("=> Running find_nearest_preimage...")
-        x, _ = find_nearest_preimage(
+        x, _ = _find_nearest_preimage(
             args,
             ukp_model,
             y,
@@ -495,7 +508,7 @@ def find_preimage(
         )
 
     # Exponential search solves numerical issue by ensuring sufficient overshoot
-    x, num_steps_used, lo = expo_search_adv(
+    x, num_steps_used, lo = _expo_search_adv(
         ukp_model,
         y,
         x_orig,
@@ -509,7 +522,7 @@ def find_preimage(
         mean_num_steps = num_steps_used.float().mean()
         print(f"=> Exponential search steps used (mean): {mean_num_steps:.2f}")
 
-    x = binary_search_best_adv(
+    x = _binary_search_best_adv(
         ukp_model,
         y,
         x_orig,

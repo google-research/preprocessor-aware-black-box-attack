@@ -11,8 +11,10 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+from __future__ import annotations
+
 from attack_prep.preprocessor.base import Preprocessor, identity
-from attack_prep.preprocessor.diffjpeg import DiffJPEG
+from attack_prep.preprocessor.diffjpeg.jpeg import DiffJPEG
 
 
 class JPEG(Preprocessor):

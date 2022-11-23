@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,9 +11,13 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Neural compression preprocessor."""
+
+from __future__ import annotations
+
 from compressai import zoo
 
-from .base import Preprocessor, identity
+from attack_prep.preprocessor.base import Preprocessor, identity
 
 
 class Neural(Preprocessor):
