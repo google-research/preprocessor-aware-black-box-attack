@@ -1,3 +1,5 @@
+"""Smart Noise."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,8 +14,8 @@ class SmartNoise(object):
         self,
         hr_shape: tuple[int, int, int],
         lr_shape: tuple[int, int, int],
-        projection: nn.Module | None,
-        projection_estimate: nn.Module | None,
+        projection: nn.Module | None = None,
+        projection_estimate: nn.Module | None = None,
         precise: bool = False,
     ):
         self.hr_shape = hr_shape

@@ -173,6 +173,8 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
     print("=> Setting up model and preprocessor...")
     model, preprocess = setup_model(config, device=device)
     prep, _ = preprocess.get_prep()
+    model = nn.DataParallel(model).eval()
+    prep = nn.DataParallel(prep).eval()
     prepare_atk_img: nn.Module = prep if bypass else Identity()
 
     # Used for testing attacks with our guess on the preprocessor is wrong
