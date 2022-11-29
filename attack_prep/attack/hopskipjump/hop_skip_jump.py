@@ -143,13 +143,16 @@ class HopSkipJump(MinimizationAttack):
         if starting_points is None:
             init_attack: MinimizationAttack
             if self.init_attack is None:
-                init_attack = LinearSearchBlendedUniformNoiseAttack(steps=50)
-                logging.info(
-                    f"Neither starting_points nor init_attack given. Falling"
-                    f" back to {init_attack!r} for initialization."
+                num_init_steps: int = 50
+                init_attack = LinearSearchBlendedUniformNoiseAttack(
+                    steps=num_init_steps
                 )
-                # EDIT: num queries = 50
-                num_queries += 50
+                logging.info(
+                    "Neither starting_points nor init_attack given. Falling"
+                    " back to %s for initialization.",
+                    init_attack,
+                )
+                num_queries += num_init_steps
             else:
                 init_attack = self.init_attack
             # TODO: use call and support all types of attacks (once early_stop
@@ -169,10 +172,9 @@ class HopSkipJump(MinimizationAttack):
                 raise ValueError(
                     f"init_attack failed for {failed} of {len(is_adv)} inputs"
                 )
-            else:
-                raise ValueError(
-                    f"{failed} of {len(is_adv)} starting_points are not adversarial"
-                )
+            raise ValueError(
+                f"{failed} of {len(is_adv)} starting_points are not adversarial"
+            )
         del starting_points
 
         tb = TensorBoard(logdir=self.tensorboard)
@@ -294,7 +296,7 @@ class HopSkipJump(MinimizationAttack):
             # log stats
             tb.histogram("norms", distances, step)
 
-            # EDIT: break when max queries reached
+            # Break when max queries reached
             if num_queries >= self.max_queries:
                 if self._verbose:
                     print(
@@ -302,6 +304,7 @@ class HopSkipJump(MinimizationAttack):
                         f", distance: {ep.mean(distances):.3f}"
                     )
                 break
+            # Only update if num_queries is still within limit
             curr_num_queries = num_queries
             best_x_advs = ep.astensor(x_advs.raw.clone())
 
@@ -415,8 +418,7 @@ class HopSkipJump(MinimizationAttack):
                 clipped_perturbed,
             )
             return clipped_perturbed
-        else:
-            return (1.0 - epsilons) * originals + epsilons * perturbed
+        return (1.0 - epsilons) * originals + epsilons * perturbed
 
     def _binary_search(
         self,
@@ -458,11 +460,14 @@ class HopSkipJump(MinimizationAttack):
 
             if reached_numerical_precision:
                 # if num_queries == 20:
-                # TODO: warn user
                 # FIXME: This is always reached when the loop has been repeated
                 # for 26 times (1/2**26 = 1.5e-8), but changing this seems to
                 # make the final outcome significantly worse
-                # print('bad')
+                print(
+                    "Numerical precision reached during binary search. "
+                    "This usually means something has gone wrong or the "
+                    "threshold is too low."
+                )
                 break
         # print(num_queries)
 

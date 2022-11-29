@@ -13,15 +13,17 @@
 
 from __future__ import annotations
 
-from attack_prep.preprocessor.base import Preprocessor, identity
+from torch import nn
+
+from attack_prep.preprocessor.base import Identity, Preprocessor
 from attack_prep.preprocessor.diffjpeg.jpeg import DiffJPEG
 
 
 class JPEG(Preprocessor):
-    def __init__(self, params, **kwargs):
+    def __init__(self, params: dict[str, str | int | float], **kwargs) -> None:
         super().__init__(params, **kwargs)
         quality = params["jpeg_quality"]
-        self.prep = DiffJPEG(differentiable=True, quality=quality).cuda()
-        self.inv_prep = identity
-        self.atk_prep = self.prep
-        self.prepare_atk_img = identity
+        self.prep: nn.Module = DiffJPEG(
+            differentiable=True, quality=quality
+        ).cuda()
+        self.inv_prep: nn.Module = Identity()

@@ -37,7 +37,6 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
     from attack_prep.preprocessor.neural import Neural
     from attack_prep.preprocessor.quantize import Quantize
     from attack_prep.preprocessor.resize import Resize
-    from attack_prep.preprocessor.resize_opt import ResizeOpt
     from attack_prep.preprocessor.sequential import Sequential
 
     if "-" in config["preprocess"]:
@@ -47,7 +46,6 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
             "identity": Preprocessor,
             "quantize": Quantize,
             "resize": Resize,
-            "resize-opt": ResizeOpt,
             "crop": Crop,
             "jpeg": JPEG,
             "neural": Neural,
@@ -66,19 +64,6 @@ class ApplySequence(nn.Module):
         for p in self.preprocesses:
             x = p(x)
         return x
-
-
-class SimpleInterp(object):
-    def __init__(self, args, preprocess, alpha=0.1):
-        self.args = args
-        self.preprocess = preprocess
-        self.x_orig = None
-        self.alpha = alpha
-
-    def __call__(self, z):
-        x = self.preprocess(z)
-        x_ = self.alpha * self.x_orig + (1 - self.alpha) * x
-        return x_
 
 
 class RgbToGrayscale(nn.Module):

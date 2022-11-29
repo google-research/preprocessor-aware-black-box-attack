@@ -80,26 +80,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--binary-search-steps", default=10, type=int)
     parser.add_argument("--lambda-search-steps", default=10, type=int)
     parser.add_argument(
-        "--run-ukp-only",
+        "--known-prep",
         action="store_true",
-        help="Run unknown-preprocessor attack only.",
+        help="If True, use known-preprocessor attack.",
     )
     parser.add_argument(
-        "--run-kp-only",
+        "--bypass",
         action="store_true",
-        help="Run known-preprocessor attack only.",
+        help="If True, use Bypassing Attack.",
     )
-    parser.add_argument("--run-proj-only", default="", type=str)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--save-adv", action="store_true")
     parser.add_argument("--mismatch-prep", default=None, type=str)
     parser.add_argument("--targeted", action="store_true")
     parser.add_argument(
-        "--prep-grad-est",
+        "--bias",
         action="store_true",
         help=(
-            "Apply preprocessing during attack gradient estimation (only "
-            "works with HSJ, QEBA)."
+            "If True, use Biased-Gradient attack, i.e., apply preprocessor "
+            "during attack gradient estimation (only works with HSJ, QEBA)."
         ),
     )
     parser.add_argument(

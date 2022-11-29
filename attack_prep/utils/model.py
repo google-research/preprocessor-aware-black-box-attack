@@ -43,9 +43,9 @@ class PreprocessModel(nn.Module):
                 Defaults to None.
         """
         super().__init__()
-        self.base_model = base_model
-        self.preprocess = preprocess
-        self.normalize = normalize
+        self.base_model: nn.Module = base_model
+        self.preprocess: nn.Module | None = preprocess
+        self.normalize: dict[str, tuple[float, float, float]] | None = normalize
         if normalize is not None:
             self.mean = nn.Parameter(
                 normalize["mean"][None, :, None, None], requires_grad=False
@@ -67,22 +67,23 @@ class PreprocessModel(nn.Module):
 
 
 def setup_model(
-    config: dict[str, Any], device: str = "cuda"
+    config: dict[str, Any],
+    device: str = "cuda",
+    # known_prep: bool = False,
 ) -> tuple[nn.Module, Preprocessor]:
     """Set up plain PyTorch ImageNet classifier from timm."""
     normalize = dict(
         mean=torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32),
         std=torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32),
     )
-    model = timm.create_model(config["model_name"], pretrained=True)
-    preprocess = setup_preprocessor(config)
-    prep = preprocess.get_prep()[0]
+    model: nn.Module = timm.create_model(config["model_name"], pretrained=True)
+    preprocess: Preprocessor = setup_preprocessor(config)
+    prep, _ = preprocess.get_prep()
 
     # Initialize models with known and unknown preprocessing
-    model = (
+    model: PreprocessModel = (
         PreprocessModel(model, preprocess=prep, normalize=normalize)
         .eval()
         .to(device)
     )
-    model = nn.DataParallel(model).eval().to(device)
     return model, preprocess

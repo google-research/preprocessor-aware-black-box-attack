@@ -16,9 +16,8 @@
 from __future__ import annotations
 
 import torch
+from torch import nn
 from torch.nn import Identity
-
-identity = Identity()
 
 
 class Preprocessor:
@@ -38,22 +37,13 @@ class Preprocessor:
         """
         _ = params, kwargs  # Unused
         self.output_size: tuple[int, int] | None = input_size
-        self.prep = identity
-        self.inv_prep = identity
-        self.atk_prep = identity
-        self.prepare_atk_img = identity
-        self.atk_to_orig = identity
+        self.prep: nn.Module = Identity()
+        self.inv_prep: nn.Module = Identity()
         self.has_exact_project: bool = False
 
-    def get_prep(self):
-        """Return all preprocessing functions.
+    def get_prep(self) -> tuple[nn.Module, nn.Module]:
+        """Return preprocessing function and its inverse."""
+        return self.prep, self.inv_prep
 
-        Returns:
-            Tuple of preprocessing function, its inverse, its variant for using
-            with preprocessor-aware attack, and its variant for preparing images
-            to be attacked.
-        """
-        return self.prep, self.inv_prep, self.atk_prep, self.prepare_atk_img
-
-    def set_x_orig(self, x_orig: torch.Tensor):
+    def set_x_orig(self, x_orig: torch.Tensor) -> None:
         """Keep original input in case some (inverse-)preprocessor needs it."""

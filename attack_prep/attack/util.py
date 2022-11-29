@@ -21,8 +21,8 @@ import random
 
 import numpy as np
 import torch
-import torch.nn as nn
 from art.estimators.classification import PyTorchClassifier
+from torch import nn
 
 from attack_prep.preprocessor.base import Preprocessor
 
@@ -91,7 +91,7 @@ def select_targets(
     model: nn.Module,
     dataloader: torch.utils.data.DataLoader,
     labels: torch.Tensor,
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Assume that `model` correctly classifies `images` as `labels`."""
     device = labels.device
     src_images, src_labels = [], []
@@ -174,46 +174,48 @@ def _to_model_space(x, min_, max_):
 
 
 def _find_nearest_preimage(
-    args,
-    model,
-    y,
-    x_orig,
-    z_adv,
-    preprocess,
-    lr=1e-1,
-    x_init=None,
-    max_epsilon=0,
-    init_lambda=1e3,
-    num_lambda_steps=10,
-    num_opt_steps=3000,
-    factor=10,
-    criteria="misclassify",
-    verbose=False,
-):
+    config: dict[str, str | int | float],
+    model: nn.Module,
+    y: torch.Tesnor,
+    x_orig: torch.Tesnor,
+    z_adv: torch.Tesnor,
+    preprocess: Preprocessor,
+    learning_rate: float = 1e-1,
+    x_init: torch.Tesnor | None = None,
+    max_epsilon: float = 0,
+    init_lambda: float = 1e3,
+    num_lambda_steps: int = 10,
+    num_opt_steps: int = 3000,
+    factor: float = 10.0,
+    criteria: str = "misclassify",
+    verbose: bool = False,
+) -> torch.Tesnor:
     if verbose:
         print("Finding pre-image of z_adv...")
     batch_size: int = x_orig.size(0)
-    log_steps: int = int(num_opt_steps / 20)
+    num_logs: int = 20
+    log_steps: int = int(num_opt_steps / num_logs)
 
     orig_dtype = x_orig.dtype
-    dtype = torch.float32
-    prev_lmbda = torch.zeros((batch_size,), device=x_orig.device, dtype=dtype)
+    # We can set higher-precision dtype in case we want better solution
+    dtype = orig_dtype  # torch.float32, torch.float64
+    prev_lmbda = torch.zeros(batch_size, device=x_orig.device, dtype=dtype)
     x_orig = x_orig.to(dtype)
     z_adv = z_adv.to(dtype)
     model.to(dtype)
 
     x_init = x_orig if x_init is None else x_init.to(dtype)
-    x_init = x_init.detach()
+    x_init.detach_()
     best_x_pre = x_init.clone()
     success_idx = torch.zeros_like(prev_lmbda, dtype=torch.bool, device="cpu")
     best_dist = torch.zeros_like(prev_lmbda, device="cpu", dtype=dtype) + 1e20
     max_eps = (0.99999 * max_epsilon) ** 2
     # Normalizing constants for the error terms to remove dimension dependency
-    STD_DIM = 224
-    scale_dim_x = (STD_DIM / x_orig.shape[-1]) ** 2
-    scale_dim_z = (STD_DIM / z_adv.shape[-1]) ** 2
+    standard_dim = 224
+    scale_dim_x = (standard_dim / x_orig.shape[-1]) ** 2
+    scale_dim_z = (standard_dim / z_adv.shape[-1]) ** 2
 
-    if args["targeted"]:
+    if config["targeted"]:
         criteria = "targeted"
     condition = {
         "misclassify": lambda x: model(x).argmax(-1) != y,
@@ -238,7 +240,7 @@ def _find_nearest_preimage(
     lmbda_hi = prev_lmbda.clone() + init_lambda
     lmbda_lo = prev_lmbda.clone() + init_lambda
 
-    for i in range(num_lambda_steps):
+    for _ in range(num_lambda_steps):
 
         lmbda = (lmbda_lo + lmbda_hi) / 2
         x_pre = x_init.clone() + torch.randn_like(x_init) * 1e-5
@@ -247,7 +249,7 @@ def _find_nearest_preimage(
         a_pre.requires_grad_()
         # Choice of optimizer also seems to matter here. Some optimizer like
         # AdamW cannot get to very low precision for some reason.
-        optimizer = torch.optim.Adam([a_pre], lr=lr, eps=_EPS)
+        optimizer = torch.optim.Adam([a_pre], lr=learning_rate, eps=_EPS)
         # SGD is too sensitive to choice of lr, especially as lambda changes
         # optimizer = torch.optim.SGD([a_pre], lr=lr, momentum=0.9, nesterov=True)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -258,13 +260,15 @@ def _find_nearest_preimage(
             verbose=verbose,
             eps=_EPS,
         )
-        best_loss = np.inf
+        best_loss: float = np.inf
+        max_loss: float = -np.inf
+        num_loss_inc: int = -1
 
         with torch.enable_grad():
             for j in range(num_opt_steps):
                 optimizer.zero_grad()
                 x_pre = _to_model_space(a_pre, 0, 1)
-                dist_orig = _squared_error(x_pre, x_orig, ord=args["ord"])
+                dist_orig = _squared_error(x_pre, x_orig, ord=config["ord"])
                 dist_orig *= scale_dim_x
                 dist_prep = _squared_error(preprocess(x_pre), z_adv, ord="2")
                 dist_prep *= scale_dim_z
@@ -278,10 +282,14 @@ def _find_nearest_preimage(
                     raise ValueError("NaN loss encountered!")
 
                 if j % log_steps == 0:
+                    cur_loss = loss.item()
                     if verbose:
-                        print(f"step {j:4d}: {loss.item():.6f}")
-                    if loss.item() < best_loss * 0.9999:
-                        best_loss = loss.item()
+                        print(f"step {j:4d}: {cur_loss:.6f}")
+                    if cur_loss > max_loss:
+                        num_loss_inc += 1
+                        max_loss = cur_loss
+                    if cur_loss < best_loss * 0.9999:
+                        best_loss = cur_loss
                     else:
                         if verbose:
                             print(
@@ -339,6 +347,10 @@ def _find_nearest_preimage(
             print("  lambda: ", lmbda.cpu().numpy())
             print("  cur_success_idx: ", cur_success_idx.cpu().numpy())
 
+        if num_loss_inc > 0:
+            # If loss has increased, then reduce lr by a factor of 10
+            learning_rate /= 10
+
     if verbose:
         print(f"=> Final pre-image success: {success_idx.sum()}/{batch_size}")
     model.to(orig_dtype)
@@ -347,7 +359,7 @@ def _find_nearest_preimage(
 
 def _expo_search_adv(
     model: nn.Module,
-    y: torch.Tensor,
+    targets: torch.Tensor,
     x_orig: torch.Tensor,
     x_adv: torch.Tensor,
     num_steps: int = 10,
@@ -361,15 +373,17 @@ def _expo_search_adv(
     This deals with numerical instability when inputs lie very close to decision
     boundary. This ensures attacks succeed as much as possible.
     """
-    success_idx = model(x_adv).argmax(-1) != y
+    success_idx = model(x_adv).argmax(-1) != targets
     if targeted:
         success_idx.logical_not_()
-    num_steps_used = torch.zeros_like(y)
+    num_steps_used = torch.zeros_like(targets)
     delta = x_adv - x_orig
-    delta_norm = delta.reshape(y.size(0), -1).norm(2, 1)[:, None, None, None]
+    delta_norm = delta.reshape(targets.size(0), -1).norm(2, dim=1)[
+        :, None, None, None
+    ]
     delta /= delta_norm + _EPS
     x_expo = x_adv.clone()
-    new_lo = torch.zeros_like(y, dtype=x_orig.dtype, device=x_orig.device)
+    new_lo = torch.zeros_like(targets, dtype=x_orig.dtype, device=x_orig.device)
 
     if init_step is None:
         # Initialize step size of exponential search: sqrt(d) * 1e-3
@@ -380,58 +394,58 @@ def _expo_search_adv(
         x = x_adv + delta * step_size
         x.clamp_(0, 1)
         num_steps_used[~success_idx] += 1
-        cur_success_idx = model(x).argmax(-1) != y
+        cur_success_idx = model(x).argmax(-1) != targets
         if targeted:
             cur_success_idx.logical_not_()
         update_idx = ~success_idx & cur_success_idx
         x_expo[update_idx] = x[update_idx]
         success_idx |= cur_success_idx
         if i == 0:
-            lo = delta_norm
+            low = delta_norm
         else:
-            lo = step_size / factor + delta_norm
-        new_lo[update_idx] = (lo / (step_size + delta_norm))[
+            low = step_size / factor + delta_norm
+        new_lo[update_idx] = (low / (step_size + delta_norm))[
             update_idx
         ].squeeze()
 
     if verbose:
-        print(f"=> Expo search success: {success_idx.sum()}/{len(y)}")
+        print(f"=> Expo search success: {success_idx.sum()}/{len(targets)}")
     return x_expo, num_steps_used, new_lo
 
 
 def _binary_search_best_adv(
     model,
-    y,
+    targets,
     x_orig,
     x_adv,
     max_num_steps=10,
     num_steps_used=None,
-    lo=None,
+    low=None,
     tol=None,
     targeted=False,
     verbose=False,
 ):
     # TODO: This should not be used with crop
     if num_steps_used is None:
-        num_steps_used = torch.zeros_like(y)
+        num_steps_used = torch.zeros_like(targets)
     batch_size = x_orig.size(0)
-    if lo is None:
-        lo = torch.zeros((batch_size, 1, 1, 1), device=x_orig.device)
+    if low is None:
+        low = torch.zeros((batch_size, 1, 1, 1), device=x_orig.device)
     else:
-        lo = lo[:, None, None, None]
-    hi = torch.ones_like(lo)
-    best_lmbda = torch.ones_like(lo)
+        low = low[:, None, None, None]
+    high = torch.ones_like(low)
+    best_lmbda = torch.ones_like(low)
     adv_dist = (x_adv - x_orig).reshape(batch_size, -1).norm(2, 1)
-    bs_update_idx = torch.zeros_like(y, dtype=torch.bool)
+    bs_update_idx = torch.zeros_like(targets, dtype=torch.bool)
 
     for i in range(max_num_steps):
-        lmbda = (hi + lo) / 2
+        lmbda = (high + low) / 2
         x = lmbda * x_adv + (1 - lmbda) * x_orig
-        fail_idx = model(x).argmax(-1) == y
+        fail_idx = model(x).argmax(-1) == targets
         if targeted:
             fail_idx.logical_not_()
-        lo[fail_idx] = lmbda[fail_idx]
-        hi[~fail_idx] = lmbda[~fail_idx]
+        low[fail_idx] = lmbda[fail_idx]
+        high[~fail_idx] = lmbda[~fail_idx]
         update_idx = (
             (~fail_idx)
             & (lmbda < best_lmbda).squeeze()
@@ -449,89 +463,90 @@ def _binary_search_best_adv(
     if verbose:
         print(
             "=> # samples updated by binary search: "
-            f"{bs_update_idx.sum()}/{len(y)}"
+            f"{bs_update_idx.sum()}/{len(targets)}"
         )
 
     return best_lmbda * x_adv + (1 - best_lmbda) * x_orig
 
 
 def find_preimage(
-    args: dict[str, str | int | float],
-    ukp_model: torch.nn.Module,
-    kp_model: torch.nn.Module,
-    y: torch.Tensor,
+    config: dict[str, str | int | float],
+    model: torch.nn.Module,
+    targets: torch.Tensor,
     x_orig: torch.Tensor,
     z_adv: torch.Tensor,
     preprocess: Preprocessor,
     verbose: bool = False,
 ) -> torch.Tensor:
     """Recovery step of the Bypassing and the Biased-Gradient Attacks."""
-    max_search_steps: int = args["binary_search_steps"]
+    max_search_steps: int = config["binary_search_steps"]
 
     if preprocess.has_exact_project:
         # Use exact projection if possible
-        x = preprocess.project(z_adv, x_orig)
-    elif args["preprocess"] == "resize-crop-quantize":
+        print("Using exact projection...")
+        x_proj = preprocess.project(z_adv, x_orig)
+    elif config["preprocess"] == "resize-crop-quantize":
         resize = preprocess.prep_list[0]
         crop = preprocess.prep_list[1]
-        x = crop.project(z_adv, resize.prep(x_orig))
-        x = resize.project(x, x_orig)
+        x_proj = crop.project(z_adv, resize.prep(x_orig))
+        x_proj = resize.project(x_proj, x_orig)
     else:
         # Otherwise, run optimization-based projection to find the nearest
         # pre-image to z_adv. First, overshoot to reduce instability.
         z_adv_os = _overshoot(preprocess.prep(x_orig), z_adv, 1e-2)
         z_adv_os.clamp_(0, 1)
-        os_fail = kp_model(z_adv_os).argmax(-1) == y
-        if args["targeted"]:
+        os_fail = model(z_adv_os).argmax(-1) == targets
+        if config["targeted"]:
             os_fail.logical_not_()
         z_adv[~os_fail] = z_adv_os[~os_fail]
         max_search_steps -= 1
-        x_init = preprocess.atk_to_orig(z_adv)
+        x_init = preprocess.inv_prep(z_adv)
 
         if verbose:
             print("=> Running find_nearest_preimage...")
-        x, _ = _find_nearest_preimage(
-            args,
-            ukp_model,
-            y,
+        x_proj, _ = _find_nearest_preimage(
+            config,
+            model,
+            targets,
             x_orig,
             z_adv,
             preprocess.prep,
+            learning_rate=1e-1,  # TODO
             x_init=x_init,
-            max_epsilon=args["epsilon"],
+            max_epsilon=config["epsilon"],
             init_lambda=1e3,
             num_opt_steps=2000,
             factor=10,
-            num_lambda_steps=args["lambda_search_steps"],
+            num_lambda_steps=config["lambda_search_steps"],
             criteria="misclassify",
             verbose=verbose,
         )
 
     # Exponential search solves numerical issue by ensuring sufficient overshoot
-    x, num_steps_used, lo = _expo_search_adv(
-        ukp_model,
-        y,
+    x_proj, num_steps_used, low = _expo_search_adv(
+        model,
+        targets,
         x_orig,
-        x,
+        x_proj,
         num_steps=max_search_steps,
         init_step=None,
-        targeted=args["targeted"],
+        targeted=config["targeted"],
         verbose=verbose,
     )
     if verbose:
         mean_num_steps = num_steps_used.float().mean()
         print(f"=> Exponential search steps used (mean): {mean_num_steps:.2f}")
 
-    x = _binary_search_best_adv(
-        ukp_model,
-        y,
+    x_proj = _binary_search_best_adv(
+        model,
+        targets,
         x_orig,
-        x,
+        x_proj,
         max_num_steps=max_search_steps,
         num_steps_used=num_steps_used,
-        lo=lo,
+        low=low,
         tol=1e-3,
-        targeted=args["targeted"],
+        targeted=config["targeted"],
         verbose=verbose,
     )
-    return x
+    return x_proj

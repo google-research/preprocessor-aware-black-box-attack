@@ -44,7 +44,6 @@ class QEBA(Attack):
         substract_steps: int = 0,
         preprocess: Callable[[torch.Tensor], torch.Tensor] | None = None,
         prep_backprop: bool = False,
-        prep_proj: bool = False,
         smart_noise: Callable[..., np.ndarray] | None = None,
         **kwargs,
     ):
@@ -67,8 +66,7 @@ class QEBA(Attack):
         self.external_dtype = None
         self.rv_generator = load_pgen(args["qeba_subspace"])
         self.prep_backprop = prep_backprop
-        self.prep_proj = prep_proj
-        if prep_proj or prep_backprop:
+        if prep_backprop:
             assert preprocess is not None
         self.smart_noise = smart_noise
 
@@ -190,9 +188,6 @@ class QEBA(Attack):
                     [self.initial_num_evals * np.sqrt(step), self.max_num_evals]
                 )
             )
-
-            if self.prep_proj:
-                perturbed = self.preprocess(perturbed)
 
             # approximate gradient.
             gradf, _ = self._approximate_gradient(

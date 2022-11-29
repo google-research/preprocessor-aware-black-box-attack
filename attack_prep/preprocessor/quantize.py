@@ -18,24 +18,29 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from attack_prep.preprocessor.base import Preprocessor, identity
+from attack_prep.preprocessor.base import Identity, Preprocessor
 
 
 class Quant(nn.Module):
     def __init__(self, num_bits: int) -> None:
         super().__init__()
-        self.num_bits: int = num_bits
+        self._num_bits: int = num_bits
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.round(x * (2**self.num_bits - 1)) / (
-            2**self.num_bits - 1
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return torch.round(inputs * (2**self._num_bits - 1)) / (
+            2**self._num_bits - 1
         )
 
 
 class Quantize(Preprocessor):
+    """n-bit Quantization (non-differentiable)."""
+
     def __init__(self, params: dict[str, str | int | float], **kwargs) -> None:
+        """Initialize Quantize.
+
+        Args:
+            params: Parameter dict. Must contain "quantize_num_bits".
+        """
         super().__init__(params, **kwargs)
         self.prep = Quant(params["quantize_num_bits"])
-        self.inv_prep = identity
-        self.atk_prep = self.prep
-        self.prepare_atk_img = identity
+        self.inv_prep = Identity()

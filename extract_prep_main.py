@@ -272,7 +272,8 @@ def _main(config: dict[str, int | float | str]) -> None:
 
     # TODO: Get a classification pipeline\
     if config["api"] == "local":
-        prep_model: PreprocessModel = setup_model(config, device="cuda")
+        prep_model: PreprocessModel
+        prep_model, _ = setup_model(config, device="cuda")
         clf_pipeline: ClassifyAPI = PyTorchModelAPI(prep_model)
     elif config["api"] == "google":
         clf_pipeline: ClassifyAPI = GoogleAPI()

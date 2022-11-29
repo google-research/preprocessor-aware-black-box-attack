@@ -40,12 +40,5 @@ class Sequential(Preprocessor):
         inv_prep = [p.inv_prep for p in prep_list][::-1]
         self.prep = ApplySequence(prep)
         self.inv_prep = ApplySequence(inv_prep)
-        self.atk_prep = ApplySequence([*inv_prep, *prep])
-        self.prepare_atk_img = ApplySequence(
-            [p.prepare_atk_img for p in prep_list]
-        )
-        self.atk_to_orig = ApplySequence(
-            [p.atk_to_orig for p in prep_list][::-1]
-        )
         self.output_size = prep_list[-1].output_size
         self.prep_list = prep_list

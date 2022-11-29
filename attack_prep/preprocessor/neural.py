@@ -15,14 +15,28 @@
 
 from __future__ import annotations
 
+import torch
 from compressai import zoo
+from torch import nn
 
-from attack_prep.preprocessor.base import Preprocessor, identity
+from attack_prep.preprocessor.base import Identity, Preprocessor
+
+
+class Compress(nn.Module):
+    def __init__(self, compress_net: nn.Module) -> None:
+        super().__init__()
+        self._compress_net: nn.Module = compress_net
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        inputs = inputs.clamp(0, 1)
+        outputs = self._compress_net(inputs)["x_hat"]
+        outputs.clamp_(0, 1)
+        return outputs
 
 
 class Neural(Preprocessor):
-    def __init__(self, params, input_size=None, **kwargs):
-        super().__init__(params, input_size=input_size, **kwargs)
+    def __init__(self, params: dict[str, str | int | float], **kwargs) -> None:
+        super().__init__(params, **kwargs)
         if "cheng2020" in params["neural_model"]:
             assert 1 <= params["neural_quality"] <= 6
         else:
@@ -43,13 +57,5 @@ class Neural(Preprocessor):
         for param in net.parameters():
             param.requires_grad = False
 
-        def compress(x):
-            x = x.clamp(0, 1)
-            out = net(x)["x_hat"]
-            return out
-
-        self.prep = compress
-        self.inv_prep = identity
-        self.atk_prep = self.prep
-        self.prepare_atk_img = identity
-        self.atk_to_orig = self.inv_prep
+        self.prep: nn.Module = Compress(net)
+        self.inv_prep: nn.Module = Identity()

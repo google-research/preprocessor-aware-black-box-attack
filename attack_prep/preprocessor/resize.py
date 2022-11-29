@@ -24,13 +24,8 @@ import scipy.sparse
 import torch
 from torchvision import transforms
 
-from attack_prep.preprocessor.base import Preprocessor, identity
-from attack_prep.preprocessor.util import (
-    BICUBIC,
-    BILINEAR,
-    NEAREST,
-    ApplySequence,
-)
+from attack_prep.preprocessor.base import Preprocessor
+from attack_prep.preprocessor.util import BICUBIC, BILINEAR, NEAREST
 
 
 class Resize(Preprocessor):
@@ -51,11 +46,7 @@ class Resize(Preprocessor):
             params["resize_out_size"],
             params["resize_out_size"],
         )
-        inv_size: tuple[int, int]
-        if params["resize_inv_size"] is None:
-            inv_size = final_size
-        else:
-            inv_size = (params["resize_inv_size"], params["resize_inv_size"])
+        self.output_size = final_size[0]
         antialias: bool = params["antialias"]
         interp = {
             "nearest": NEAREST,
@@ -63,31 +54,13 @@ class Resize(Preprocessor):
             "bicubic": BICUBIC,
         }[params["resize_interp"]]
         self._interp: str = params["resize_interp"]
-        self._bypass: bool = not params["prep_grad_est"]
-        if not self._bypass and not params["prep_backprop"]:
-            raise ValueError(
-                "prep_backprop must be True for resizing if Biased-Gradient "
-                "Attack is used instead of Bypassing Attack."
-            )
-
-        self.output_size = final_size[0]
 
         self.prep = transforms.Resize(
             final_size, interpolation=interp, antialias=antialias
         )
         self.inv_prep = transforms.Resize(
-            inv_size, interpolation=interp, antialias=antialias
-        )
-        self.atk_to_orig = transforms.Resize(
             orig_size, interpolation=interp, antialias=antialias
         )
-        self.atk_prep = (
-            ApplySequence([self.inv_prep, self.prep])
-            if self._bypass
-            else self.prep
-        )
-        self.prepare_atk_img = self.prep if self._bypass else identity
-
         self.has_exact_project: bool = True
         self.pinv_mat: np.ndarray | None = None
         self._setup_matrix(orig_size, final_size)
@@ -182,7 +155,7 @@ class Resize(Preprocessor):
         """
         batch_size, num_channels, _, _ = z_adv.shape
         x_shape = x_orig.shape
-        hx, wx = x_shape[2], x_shape[3]
+        height_x, width_x = x_shape[2], x_shape[3]
         if self._interp == "nearest":
             x_orig = x_orig.clone().view(batch_size, num_channels, -1)
             x_orig[:, :, self._prep_idx] = z_adv.view(
@@ -191,21 +164,20 @@ class Resize(Preprocessor):
             x_orig = x_orig.reshape(x_shape)
         else:
             if self.pinv_mat is not None:
-                z_ = z_adv - self.prep(x_orig)
+                z_delta = z_adv - self.prep(x_orig)
+                # pylint: disable=unsubscriptable-object
                 delta = (
-                    self.pinv_mat[
-                        None, None, :, :
-                    ]  # pylint: disable=unsubscriptable-object
-                    * z_.view(batch_size, num_channels, 1, -1).cpu()
+                    self.pinv_mat[None, None, :, :]
+                    * z_delta.view(batch_size, num_channels, 1, -1).cpu()
                 ).sum(-1)
             else:
                 # Use iterative algorithm to find inverse of sparse matrix
                 delta = x_orig.clone()
-                z_ = (
+                z_delta = (
                     (z_adv - self.prep(x_orig)).cpu().numpy().astype(np.float64)
                 )
                 # Iterate over batch
-                for i, zi in enumerate(z_):
+                for i, zi in enumerate(z_delta):
                     # Iterate over channels
                     for c, zic in enumerate(zi):
                         out = scipy.sparse.linalg.lsmr(
@@ -218,7 +190,7 @@ class Resize(Preprocessor):
                         )[0]
                         delta[i, c] = torch.from_numpy(
                             out.astype(np.float32)
-                        ).view(hx, wx)
+                        ).view(height_x, width_x)
             x_orig = x_orig + delta.view(x_shape).to(z_adv.device)
 
         x_orig.clamp_(0, 1)

@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -13,8 +13,26 @@
 
 from torchvision import transforms
 
-from .base import Preprocessor
-from .util import BICUBIC, BILINEAR, NEAREST, ApplySequence, SimpleInterp
+from attack_prep.preprocessor.base import Preprocessor
+from attack_prep.preprocessor.util import (
+    BICUBIC,
+    BILINEAR,
+    NEAREST,
+    ApplySequence,
+)
+
+
+class SimpleInterp:
+    def __init__(self, args, preprocess, alpha=0.1):
+        self.args = args
+        self.preprocess = preprocess
+        self.x_orig = None
+        self.alpha = alpha
+
+    def __call__(self, z):
+        x = self.preprocess(z)
+        x_ = self.alpha * self.x_orig + (1 - self.alpha) * x
+        return x_
 
 
 class ResizeOpt(Preprocessor):

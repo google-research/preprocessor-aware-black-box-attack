@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,16 +11,17 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Sign-OPT Attack.
+
+Code is adapted from https://github.com/cmhcbb/attackbox/blob/master/attack/OPT_attack.py
 """
-Code is adapted from 
-https://github.com/cmhcbb/attackbox/blob/master/attack/OPT_attack.py
-"""
+
 import time
 
 import torch
 
-from .base import Attack
-from .sign_opt.sign_opt_util import (
+from attack_prep.attack.base import Attack
+from attack_prep.attack.sign_opt.sign_opt_util import (
     PytorchModel,
     fine_grained_binary_search,
     fine_grained_binary_search_local,
