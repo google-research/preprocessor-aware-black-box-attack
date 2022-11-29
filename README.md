@@ -11,8 +11,7 @@ Decision-based adversarial attacks construct inputs that fool a machine-learning
 To install dependencies,
 
 ```[bash]
-# conda install -y pytorch==1.9.0 torchvision==0.10.0 torchaudio==0.9.0 cudatoolkit=11.3 -c pytorch -c conda-forge
-conda install -y pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 conda install -y scipy pandas scikit-learn pip
 conda upgrade -y numpy scipy pandas scikit-learn
 conda install -y -c conda-forge scikit-image timm

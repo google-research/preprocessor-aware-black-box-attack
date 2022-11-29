@@ -1,4 +1,4 @@
-#Copyright 2022 Google LLC
+# Copyright 2022 Google LLC
 # * Licensed under the Apache License, Version 2.0 (the "License");
 # * you may not use this file except in compliance with the License.
 # * You may obtain a copy of the License at
@@ -11,6 +11,8 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+"""Utility script for gathering and printing metrics."""
+
 import os
 import pickle
 
@@ -19,7 +21,8 @@ import numpy as np
 
 def read_pickle_file(pickle_filename, max_eps):
 
-    out = pickle.load(open(pickle_filename, "rb"))
+    with open(pickle_filename, "rb") as file:
+        out = pickle.load(file)
     dist_thress = np.arange(21) * (max_eps / 20)
     ukp_sr, kp_sr = [], []
     mean_dist_ukp, mean_dist_kp = 0, 0
@@ -38,6 +41,16 @@ def read_pickle_file(pickle_filename, max_eps):
     if "idx_success_kp" in out:
         idx_success_kp = out["idx_success_kp"]
         dist_kp = out["dist_kp"]
+        num_samples = len(idx_success_kp)
+        for dist_thres in dist_thress:
+            num_success = (dist_kp[idx_success_kp] <= dist_thres).sum().item()
+            kp_sr.append(num_success / num_samples)
+        mean_dist_kp = dist_kp[idx_success_kp].mean()
+        suc_kp = idx_success_kp.float().mean()
+
+    if "idx_success" in out:
+        idx_success_kp = out["idx_success"]
+        dist_kp = out["dist"]
         num_samples = len(idx_success_kp)
         for dist_thres in dist_thress:
             num_success = (dist_kp[idx_success_kp] <= dist_thres).sum().item()
@@ -68,6 +81,8 @@ max_eps = 50
 tokens = []
 # tokens = ['resize', '256']
 # tokens = ['identity']
+# tokens = ["resize-nearest-None-224-orig512-eps22.8571-hsj-"]
+tokens = ["neural-bmshj2018_factorized-6-orig224-eps10.0-hsj-"]
 
 files = os.listdir("./results/")
 files = [
@@ -80,7 +95,7 @@ ukp, kp = {}, {}
 output_list = []
 
 for f in files:
-    if not all([t in f for t in tokens]):
+    if not all(t in f for t in tokens):
         continue
     # if ('-tg' in f and not targeted) or ('-tg' not in f and targeted):
     #     continue
@@ -95,9 +110,15 @@ for f in files:
     ) = read_pickle_file(f"results/{f}.pkl", max_eps)
     ukp[f] = ukp_sr
     kp[f] = kp_sr
-    output_list.append(
-        f"{f}: {suc_ukp:.4f}, {mean_dist_ukp:.4f}, -, {suc_kp:.4f}, {mean_dist_kp:.4f}, -"
-    )
+    # output_list.append(
+    #     f"{f}: {suc_ukp:.4f}, {mean_dist_ukp:.4f}, -, {suc_kp:.4f}, {mean_dist_kp:.4f}, -"
+    # )
+    f = f.replace(tokens[0], "")
+    output_list.append(f"{f}, {suc_kp:.4f}, {mean_dist_kp:.4f}")
+
+output_list = sorted(
+    output_list, key=lambda x: (x.split(",")[0].split("-")[-1], x)
+)
 
 print("ukp")
 for k in sorted(ukp.keys()):
@@ -107,5 +128,5 @@ print("kp")
 for k in sorted(ukp.keys()):
     print(f"'{k}': {kp[k]},")
 
-for l in sorted(output_list):
-    print(l)
+for ol in output_list:
+    print(ol)
