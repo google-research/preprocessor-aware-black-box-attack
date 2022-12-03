@@ -173,8 +173,8 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
     print("=> Setting up model and preprocessor...")
     model, preprocess = setup_model(config, device=device)
     prep, _ = preprocess.get_prep()
-    model = nn.DataParallel(model).eval()
-    prep = nn.DataParallel(prep).eval()
+    model = nn.DataParallel(model).to(device).eval()
+    prep = nn.DataParallel(prep).to(device).eval()
     prepare_atk_img: nn.Module = prep if bypass else Identity()
 
     # Used for testing attacks with our guess on the preprocessor is wrong
@@ -203,7 +203,7 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
     if config["smart_noise"]:
         print("=> Using Smart Noise...")
         snoise = _setup_smart_noise(
-            config["resize_out_size"], config["orig_size"], prep
+            preprocess.output_size, config["orig_size"], prep
         )
 
     # Initialize attacks with known and unknown preprocessing

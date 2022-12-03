@@ -56,23 +56,37 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
 
 
 class ApplySequence(nn.Module):
-    def __init__(self, preprocesses):
-        super().__init__()
-        self.preprocesses = preprocesses
+    """Apply multiple preprocessors sequentially."""
 
-    def forward(self, x):
-        for p in self.preprocesses:
-            x = p(x)
-        return x
+    def __init__(self, preprocesses: list[nn.Module]) -> None:
+        """Initialize ApplySequence.
+
+        Args:
+            preprocesses: List of preprocessors to apply in order.
+        """
+        super().__init__()
+        self.preprocesses: list[nn.Module] = preprocesses
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Preprocess."""
+        for prep in self.preprocesses:
+            inputs = prep(inputs)
+        return inputs
 
 
 class RgbToGrayscale(nn.Module):
-    def __init__(self):
+    """Convert RGB image to grayscale."""
+
+    def __init__(self) -> None:
+        """Initialize RgbToGrayscale."""
         super().__init__()
         weight = torch.tensor([0.299, 0.587, 0.114], dtype=torch.float32)[
             None, :, None, None
         ]
-        self.weight = nn.Parameter(weight, requires_grad=False)
+        self.register_buffer("_weight", weight)
 
-    def forward(self, x):
-        return (x * self.weight).sum(1, keepdim=True).expand(-1, 3, -1, -1)
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Convert RGB image to grayscale and expands back to 3 channels."""
+        return (
+            (inputs * self._weight).sum(1, keepdim=True).expand(-1, 3, -1, -1)
+        )

@@ -11,32 +11,34 @@
 # * See the License for the specific language governing permissions and
 # * limitations under the License.
 
+from attack_prep.attack.bandit import BanditAttack
+from attack_prep.attack.boundary import BoundaryAttack
+from attack_prep.attack.fmn import FMNAttack
+from attack_prep.attack.hopskipjump import HopSkipJumpAttack
+from attack_prep.attack.opt import OptAttack
+from attack_prep.attack.qeba import QEBA
+from attack_prep.attack.sign_opt import SignOptAttack
+from attack_prep.attack.simba import SimBAAttack
+from attack_prep.attack.square import SquareAttack
+from attack_prep.attack.zoo import ZooAttack
+
 # from .rays import RaySAttack
-from .bandit import BanditAttack
 # from .bayes import BayesOptAttack
-from .boundary import BoundaryAttack
 # from .geoda import GeoDAAttack
-from .hopskipjump import HopSkipJumpAttack
-from .opt import OptAttack
-from .qeba import QEBA
-from .sign_opt import SignOptAttack
-from .simba import SimBAAttack
-from .square import SquareAttack
-from .zoo import ZooAttack
-from .fmn import FMNAttack
+
 
 ATTACK_DICT = {
     # 'rays': RaySAttack,
-    'hsj': HopSkipJumpAttack,
-    'simba': SimBAAttack,
+    "hsj": HopSkipJumpAttack,
+    "simba": SimBAAttack,
     # 'geoda': GeoDAAttack,
-    'boundary': BoundaryAttack,
-    'square': SquareAttack,
-    'zoo': ZooAttack,
-    'bandit': BanditAttack,
-    'signopt': SignOptAttack,
+    "boundary": BoundaryAttack,
+    "square": SquareAttack,
+    "zoo": ZooAttack,
+    "bandit": BanditAttack,
+    "signopt": SignOptAttack,
     # 'bayes': BayesOptAttack,
-    'opt': OptAttack,
-    'qeba': QEBA,
-    'fmn': FMNAttack,
+    "opt": OptAttack,
+    "qeba": QEBA,
+    "fmn": FMNAttack,
 }

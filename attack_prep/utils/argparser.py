@@ -65,6 +65,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="Number of workers for loading data.",
     )
+    parser.add_argument(
+        "--num-gpus",
+        default=1,
+        type=int,
+        help="Number of GPUs to use. Will use DataParallel for num gpus > 1.",
+    )
     parser.add_argument("--data-dir", default="./data/", type=str)
     parser.add_argument(
         "--ord",
