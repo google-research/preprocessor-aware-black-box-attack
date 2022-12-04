@@ -117,9 +117,9 @@ class BPDARound(torch.autograd.Function):  # pylint: disable=abstract-method
         this method so we cannot simply call torch.round here. Otherwise, it
         will lead to infinite recursion.
         """
+        ctx.save_for_backward(inputs)
         floor = torch.floor(inputs)
         outputs = floor + (inputs - floor > 0.5).to(inputs.device)
-        ctx.save_for_backward(inputs, outputs)
         return outputs
 
     @staticmethod
@@ -131,6 +131,9 @@ class BPDARound(torch.autograd.Function):  # pylint: disable=abstract-method
 
         diff_round(x) = torch.round(x) + (x - torch.round(x)) ** 3
         """
-        inputs, outputs = ctx.saved_tensors
-        # Forward: torch.round(x) + (x - torch.round(x)) ** 3
+        (inputs,) = ctx.saved_tensors
+        # Need to inefficiently recompute rounding here due to subsequent
+        # in-place ops in neural compression (e.g., bmshj2018_factorized).
+        floor = torch.floor(inputs)
+        outputs = floor + (inputs - floor > 0.5).to(inputs.device)
         return grad_output * 3 * (inputs - outputs) ** 2
