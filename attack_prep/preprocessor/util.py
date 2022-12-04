@@ -30,6 +30,20 @@ BICUBIC = transforms.InterpolationMode.BICUBIC
 
 def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
     """Create preprocessor given config."""
+    if config["bpda_round"]:
+        # This must be called before importing the preprocessor to take effect
+        print("=> Replace all torch.round with BPDA rounding.")
+        # Custom autograd function must be called by apply()
+        # pylint: disable=unnecessary-lambda
+        torch.round = lambda x: BPDARound.apply(x)
+    else:
+        assert ("nueral" not in config["preprocess"]) or not (
+            config["prep_backprop"] or config["smart_noise"]
+        ), (
+            "prep_backprop and smart_noise options require grad so BPDA "
+            "rounding must be used for neural compression."
+        )
+
     # Dirty import here to avoid circular imports
     # pylint: disable=import-outside-toplevel
     from attack_prep.preprocessor.crop import Crop
@@ -90,3 +104,33 @@ class RgbToGrayscale(nn.Module):
         return (
             (inputs * self._weight).sum(1, keepdim=True).expand(-1, 3, -1, -1)
         )
+
+
+class BPDARound(torch.autograd.Function):  # pylint: disable=abstract-method
+    """Differentiable rounding with approximated backward pass."""
+
+    @staticmethod
+    def forward(ctx, inputs):  # pylint: disable=arguments-differ
+        """Normal rounding.
+
+        This may not be very efficient, but we are replacing torch.round with
+        this method so we cannot simply call torch.round here. Otherwise, it
+        will lead to infinite recursion.
+        """
+        floor = torch.floor(inputs)
+        outputs = floor + (inputs - floor > 0.5).to(inputs.device)
+        ctx.save_for_backward(inputs, outputs)
+        return outputs
+
+    @staticmethod
+    def backward(ctx, grad_output):  # pylint: disable=arguments-differ
+        """Approximated gradient of rounding.
+
+        Use gradients as if the forward pass is done by the following
+        approximated rounding.
+
+        diff_round(x) = torch.round(x) + (x - torch.round(x)) ** 3
+        """
+        inputs, outputs = ctx.saved_tensors
+        # Forward: torch.round(x) + (x - torch.round(x)) ** 3
+        return grad_output * 3 * (inputs - outputs) ** 2

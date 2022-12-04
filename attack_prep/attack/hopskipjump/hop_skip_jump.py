@@ -324,6 +324,7 @@ class HopSkipJump(MinimizationAttack):
             rv = self.smart_noise(x_advs.raw, steps)
             rv = torch.from_numpy(rv).to(x_advs.raw.device)
             rv = ep.expand_dims(ep.astensor(rv), 1)
+            print(rv)
         else:
             if self.constraint == "l2":
                 rv = ep.normal(x_advs, noise_shape)

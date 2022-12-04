@@ -85,11 +85,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--binary-search-steps", default=10, type=int)
     parser.add_argument("--lambda-search-steps", default=10, type=int)
-    parser.add_argument(
-        "--known-prep",
-        action="store_true",
-        help="If True, use known-preprocessor attack.",
-    )
+    # parser.add_argument(
+    #     "--known-prep",
+    #     action="store_true",
+    #     help="If True, use known-preprocessor attack.",
+    # )
     parser.add_argument(
         "--bypass",
         action="store_true",
@@ -99,6 +99,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-adv", action="store_true")
     parser.add_argument("--mismatch-prep", default=None, type=str)
     parser.add_argument("--targeted", action="store_true")
+    parser.add_argument(
+        "--bpda-round",
+        action="store_true",
+        help="Replace torch.round with BPDA rounding.",
+    )
     parser.add_argument(
         "--bias",
         action="store_true",

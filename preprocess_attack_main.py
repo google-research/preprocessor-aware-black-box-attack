@@ -289,9 +289,9 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
     if known_prep:
         x_adv, y_proj = x_gt.clone(), y_gt.clone()
         # Briefly put prep on cpu since xz_adv is on cpu
-        prep.to(xz_adv.device)
-        z_adv = prep(xz_adv)
-        prep.to(device)
+        cpu_prep = prep.module.to(xz_adv.device)
+        z_adv = cpu_prep(xz_adv)
+        prep.module.to(device)
         # Find pre-image projection of known-preprocessing attack
         batch_size = 1
         num_batches = int(np.ceil(num_samples / batch_size))
