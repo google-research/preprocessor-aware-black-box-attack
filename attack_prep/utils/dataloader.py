@@ -12,25 +12,24 @@
 # * limitations under the License.
 
 import torch
-import torchvision.datasets as datasets
-from torchvision import transforms
+from torchvision import datasets, transforms
 
 
-def get_dataloader(args):
+def get_dataloader(config):
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(
-            args["data_dir"],
+            config["data_dir"],
             transforms.Compose(
                 [
-                    transforms.Resize(int(args["orig_size"] * 256 / 224)),
-                    transforms.CenterCrop(args["orig_size"]),
+                    transforms.Resize(int(config["orig_size"] * 256 / 224)),
+                    transforms.CenterCrop(config["orig_size"]),
                     transforms.ToTensor(),
                 ]
             ),
         ),
-        batch_size=args["batch_size"],
+        batch_size=config["batch_size"],
         shuffle=True,
-        num_workers=args["workers"],
+        num_workers=config["workers"],
         pin_memory=True,
     )
     return val_loader

@@ -82,7 +82,7 @@ tokens = []
 # tokens = ['resize', '256']
 # tokens = ['identity']
 # tokens = ["resize-nearest-None-224-orig512-eps22.8571-hsj-"]
-tokens = ["neural-bmshj2018_factorized-6-orig224-eps10.0-hsj-"]
+tokens = ["neural-cheng2020_anchor-6-orig256-eps10.0-hsj-"]
 
 files = os.listdir("./results/")
 files = [

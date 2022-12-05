@@ -375,7 +375,10 @@ def run_one_setting(config: dict[str, str | int | float]) -> None:
 
     atk_params = ""
     for key in sorted(config.keys()):
-        if config["attack"] == key.split("_")[0]:
+        # Skip this key
+        if key in ("sr_config_path",):
+            continue
+        if config["attack"] == key.split("_", maxsplit=1)[0]:
             atk_params += f"-{config[key]}"
 
     tokens = [

@@ -26,7 +26,7 @@ class Preprocessor:
     def __init__(
         self,
         params: dict[str, str | int | float],
-        input_size: tuple[int, int] | None = None,
+        input_size: int | None = None,
         **kwargs,
     ):
         """Initialize default preprocessor which is just an identity.
@@ -36,7 +36,8 @@ class Preprocessor:
             input_size: Input image size (height, width). Defaults to None.
         """
         _ = params, kwargs  # Unused
-        self.output_size: tuple[int, int] | None = input_size
+        self.input_size: int | None = input_size
+        self.output_size: int | None = input_size
         self.prep: nn.Module = Identity()
         self.inv_prep: nn.Module = Identity()
         self.has_exact_project: bool = False

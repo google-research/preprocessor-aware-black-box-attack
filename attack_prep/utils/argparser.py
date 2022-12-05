@@ -145,6 +145,23 @@ def parse_args() -> argparse.Namespace:
     # Neural compression
     parser.add_argument("--neural-model", default=None, type=str)
     parser.add_argument("--neural-quality", default=6, type=int)
+    # Super resolution
+    # parser.add_argument("--sr-out-size", default=224, type=int)  # Fixed to 4x
+    parser.add_argument(
+        "--sr-model",
+        default=None,
+        type=str,
+        help=(
+            'Name of model to use for super-resolution. Options are "edsr", '
+            '"esrgan", "real_esrgan", "ttsr".'
+        ),
+    )
+    parser.add_argument(
+        "--sr-config-path",
+        default="~/mmediting/configs",
+        type=str,
+        help="Base path to config files of MMEditing.",
+    )
     # =============================== Attack ================================ #
     parser.add_argument("--max-iter", default=1000, type=int)
     # RayS

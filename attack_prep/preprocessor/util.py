@@ -52,6 +52,7 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
     from attack_prep.preprocessor.quantize import Quantize
     from attack_prep.preprocessor.resize import Resize
     from attack_prep.preprocessor.sequential import Sequential
+    from attack_prep.preprocessor.super_resolution import SuperResolution
 
     if "-" in config["preprocess"]:
         preprocessor_fn = Sequential
@@ -63,6 +64,7 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
             "crop": Crop,
             "jpeg": JPEG,
             "neural": Neural,
+            "sr": SuperResolution,
         }[config["preprocess"]]
 
     preprocess = preprocessor_fn(config, input_size=config["orig_size"])

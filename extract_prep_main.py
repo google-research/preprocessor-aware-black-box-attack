@@ -22,6 +22,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms
+from torch.backends import cudnn
 
 from attack_prep.preprocessor.util import BICUBIC, BILINEAR, NEAREST
 from attack_prep.utils.argparser import parse_args
@@ -251,6 +252,22 @@ class FindCrop(FindPreprocessor):
 
 
 def _main(config: dict[str, int | float | str]) -> None:
+    device: str = "cuda"
+    clf_api: str = config["api"]
+    
+    random.seed(config["seed"])
+    np.random.seed(config["seed"])
+    torch.manual_seed(config["seed"])
+    torch.cuda.manual_seed_all(config["seed"])
+
+    # Setting benchmark to True may result in non-deterministic results with
+    # resizing.
+    cudnn.benchmark = False
+    # Setting deterministic must be set to True for neural-based preprocessor.
+    # Othwerwise, the preprocessor itself may be non-deterministic.
+    cudnn.deterministic = any(
+        prep in config["preprocess"] for prep in ("neural", "sr")
+    )
 
     orig_size: tuple[int, int] = (config["orig_size"], config["orig_size"])
 
@@ -270,16 +287,16 @@ def _main(config: dict[str, int | float | str]) -> None:
         f"shape {dataset.shape}!"
     )
 
-    # TODO: Get a classification pipeline\
-    if config["api"] == "local":
+    # TODO: Get a classification pipeline
+    if clf_api == "local":
         prep_model: PreprocessModel
-        prep_model, _ = setup_model(config, device="cuda")
+        prep_model, _ = setup_model(config, device=device)
         clf_pipeline: ClassifyAPI = PyTorchModelAPI(prep_model)
-    elif config["api"] == "google":
+    elif clf_api == "google":
         clf_pipeline: ClassifyAPI = GoogleAPI()
     else:
         raise NotImplementedError(
-            f"{config['api']} classification API is not implemented!"
+            f"{clf_api} classification API is not implemented!"
         )
 
     # attack = FindResize(clf_pipeline, init_size=orig_size)
