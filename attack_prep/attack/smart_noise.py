@@ -50,7 +50,9 @@ class SmartNoise(object):
             perturbed_lr = self.projection(x_hr) + delta_lr
 
             # loss = L2 norm distance at the LR space
-            loss = torch.norm(self.projection_estimate(perturbed_hr) - perturbed_lr)
+            loss = torch.norm(
+                self.projection_estimate(perturbed_hr) - perturbed_lr
+            )
             # loss = torch.norm(self.projection(perturbed_hr) - perturbed_lr)
             loss.backward()
 
