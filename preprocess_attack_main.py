@@ -369,15 +369,15 @@ def run_one_setting(config: dict[str, str | int | float]) -> None:
     prep_params = ""
     for key in sorted(config.keys()):
         key_prep_name = key.split("_")[0]
+        # Skip this key
+        if key in ("sr_config_path",):
+            continue
         for prep in preps:
             if prep == key_prep_name:
                 prep_params += f"-{config[key]}"
 
     atk_params = ""
     for key in sorted(config.keys()):
-        # Skip this key
-        if key in ("sr_config_path",):
-            continue
         if config["attack"] == key.split("_", maxsplit=1)[0]:
             atk_params += f"-{config[key]}"
 
@@ -408,6 +408,7 @@ def run_one_setting(config: dict[str, str | int | float]) -> None:
         print(f"Output is being written to {path}.out", flush=True)
         sys.stdout = open(path + ".out", "w", encoding="utf-8")
         sys.stderr = sys.stdout
+    print(path)
 
     pprint.pprint(config)
     _main(config, path)

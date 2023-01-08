@@ -556,7 +556,7 @@ def find_preimage(
             learning_rate=1e-1,
             x_init=x_init,
             init_lambda=1e3,
-            num_opt_steps=2000,
+            num_opt_steps=1000,
             factor=10,
             num_lambda_steps=config["lambda_search_steps"],
             criterion="misclassify",
