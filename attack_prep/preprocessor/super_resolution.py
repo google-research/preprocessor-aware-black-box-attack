@@ -85,6 +85,8 @@ class SuperResolution(Preprocessor):
         config_path /= _CONFIG[model_name]
         config_path = config_path.expanduser()
 
+        # Warnining when loading real_esrgan is expected, can be subpressed by
+        # this hack: https://github.com/open-mmlab/mmediting/issues/1439.
         model = init_model(str(config_path), checkpoint=_CHECKPOINT[model_name])
         model.eval().to("cuda")
         for param in model.parameters():
