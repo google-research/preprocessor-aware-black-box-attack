@@ -80,10 +80,10 @@ max_eps = 50
 tokens = []
 # tokens = ['resize', '256']
 # tokens = ['neural-']
-tokens = ["resize-bicubic-None-224-orig512-eps10.0-hsj-"]
+# tokens = ["resize-bicubic-None-224-orig512-eps10.0-hsj-"]
 # tokens = ["neural-cheng2020_anchor-4-orig256-eps10.0-hsj-"]
 # tokens = ["neural-cheng2020_attn-6-orig256-eps10.0-hsj-"]
-# # tokens = ["neural-bmshj2018_hyperprior-6-orig256-eps10.0-hsj-"]
+# tokens = ["neural-bmshj2018_hyperprior-6-orig256-eps10.0-hsj-"]
 # tokens = ["sr-esrgan-orig56-eps10.0-hsj-"]
 # tokens = ["sr-edsr-orig56-eps10.0-qeba-"]
 # tokens = ["resize-bicubic-None-224-orig512-eps10.0-hsj-"]
@@ -117,9 +117,6 @@ for f in files:
     ) = read_pickle_file(f"results/{f}.pkl", max_eps)
     ukp[f] = ukp_sr
     kp[f] = kp_sr
-    # output_list.append(
-    #     f"{f}: {suc_ukp:.4f}, {mean_dist_ukp:.4f}, -, {suc_kp:.4f}, {mean_dist_kp:.4f}, -"
-    # )
     f = f.replace(tokens[0], "")
     output_list.append(f"{f}, {suc_kp:.4f}, {mean_dist_kp:.4f}")
 
