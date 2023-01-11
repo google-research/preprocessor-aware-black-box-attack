@@ -47,8 +47,9 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
     # Dirty import here to avoid circular imports
     # pylint: disable=import-outside-toplevel
     from attack_prep.preprocessor.crop import Crop
+    from attack_prep.preprocessor.denoise import Denoiser
     from attack_prep.preprocessor.jpeg import JPEG
-    from attack_prep.preprocessor.neural import Neural
+    from attack_prep.preprocessor.neural import NeuralCompressor
     from attack_prep.preprocessor.quantize import Quantize
     from attack_prep.preprocessor.resize import Resize
     from attack_prep.preprocessor.sequential import Sequential
@@ -63,8 +64,9 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
             "resize": Resize,
             "crop": Crop,
             "jpeg": JPEG,
-            "neural": Neural,
+            "neural": NeuralCompressor,
             "sr": SuperResolution,
+            "denoise": Denoiser,
         }[config["preprocess"]]
 
     preprocess = preprocessor_fn(config, input_size=config["orig_size"])

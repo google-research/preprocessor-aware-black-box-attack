@@ -10,7 +10,7 @@ Decision-based adversarial attacks construct inputs that fool a machine-learning
 
 To install dependencies,
 
-```[bash]
+```bash
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 conda install -y scipy pandas scikit-learn pip
 conda upgrade -y numpy scipy pandas scikit-learn
@@ -22,7 +22,7 @@ conda install -y -c conda-forge scikit-image timm
 conda install botorch -c pytorch -c gpytorch -y
 
 # tensorflow is only used by adversarial-robustness-toolbox
-pip install foolbox kornia adversarial-robustness-toolbox[pytorch] tensorflow
+pip install foolbox kornia adversarial-robustness-toolbox[pytorch] tensorflow einops
 pip install git+https://github.com/fra31/auto-attack
 # Flag --no-deps is important here to prevent reinstall pytorch on pip
 pip install torchjpeg compressai --no-deps
@@ -30,7 +30,7 @@ pip install torchjpeg compressai --no-deps
 
 Load ImageNet validation set with blurred face
 
-```[bash]
+```bash
 wget https://image-net.org/data/ILSVRC/blurred/val_blurred.tar.gz
 ```
 

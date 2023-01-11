@@ -34,7 +34,7 @@ class Compress(nn.Module):
         return outputs
 
 
-class Neural(Preprocessor):
+class NeuralCompressor(Preprocessor):
     def __init__(self, params: dict[str, str | int | float], **kwargs) -> None:
         super().__init__(params, **kwargs)
         if "cheng2020" in params["neural_model"]:
