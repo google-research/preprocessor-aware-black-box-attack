@@ -370,7 +370,7 @@ def run_one_setting(config: dict[str, str | int | float]) -> None:
     for key in sorted(config.keys()):
         key_prep_name = key.split("_")[0]
         # Skip this key
-        if key in ("sr_config_path",):
+        if key in ("sr_config_path", "denoise_config_path"):
             continue
         for prep in preps:
             if prep == key_prep_name:

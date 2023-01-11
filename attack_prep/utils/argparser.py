@@ -162,6 +162,29 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Base path to config files of MMEditing.",
     )
+    # Denoise
+    parser.add_argument(
+        "--denoise-model",
+        default=None,
+        type=str,
+        help=(
+            'Name of model to use for denoising. Options are "swinir".'
+        ),
+    )
+    parser.add_argument(
+        "--denoise-mode",
+        default=None,
+        type=str,
+        help=(
+            'Name of model to use for denoising. Options are "swinir".'
+        ),
+    )
+    parser.add_argument(
+        "--denoise-config-path",
+        default="~/mmediting/configs",
+        type=str,
+        help="Base path to config files of MMEditing.",
+    )
     # =============================== Attack ================================ #
     parser.add_argument("--max-iter", default=1000, type=int)
     # RayS
