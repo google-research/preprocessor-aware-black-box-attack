@@ -10,7 +10,7 @@ Decision-based adversarial attacks construct inputs that fool a machine-learning
 
 To install dependencies,
 
-```[bash]
+```bash
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 conda install -y scipy pandas scikit-learn pip
 conda upgrade -y numpy scipy pandas scikit-learn
@@ -28,9 +28,12 @@ pip install git+https://github.com/fra31/auto-attack
 pip install torchjpeg compressai --no-deps
 ```
 
+- Install MMEditing using this [instruction](https://mmediting.readthedocs.io/en/dev-1.x/get_started/install.html#best-practices).
+- Also need `clip` package which can be installed via this [instruction](https://github.com/openai/CLIP#usage).
+
 Load ImageNet validation set with blurred face
 
-```[bash]
+```bash
 wget https://image-net.org/data/ILSVRC/blurred/val_blurred.tar.gz
 ```
 

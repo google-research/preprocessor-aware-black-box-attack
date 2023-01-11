@@ -24,6 +24,6 @@ class JPEG(Preprocessor):
         super().__init__(params, **kwargs)
         quality = params["jpeg_quality"]
         self.prep: nn.Module = DiffJPEG(
-            differentiable=True, quality=quality
+            differentiable=False, quality=quality
         ).cuda()
         self.inv_prep: nn.Module = Identity()

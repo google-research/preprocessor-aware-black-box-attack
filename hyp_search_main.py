@@ -45,16 +45,19 @@ if __name__ == "__main__":
             "hyp": ["qeba_subspace"],
             "val": [
                 [
-                    "naive",
+                    # "naive",
                     "resize2",
                     "resize4",
                     "resize8",
                     "resize16",
-                    "resize32",
+                    # "resize32",
                 ]
             ],
         },
     }
+
+    if args.smart_noise:
+        hyp_to_search["qeba"]["val"] = [["naive"]]
 
     params = hyp_to_search[args.attack]
     for i, hyp in enumerate(params["hyp"]):
