@@ -56,6 +56,9 @@ if __name__ == "__main__":
         },
     }
 
+    if args.smart_noise:
+        hyp_to_search["qeba"]["val"] = [["naive"]]
+
     params = hyp_to_search[args.attack]
     for i, hyp in enumerate(params["hyp"]):
         vals = params["val"][i]

@@ -57,7 +57,9 @@ class Restore(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Restore inputs using MMEditing API."""
-        outputs: torch.Tensor = self._model(mode="tensor", inputs=inputs)
+        outputs: torch.Tensor = self._model(
+            mode="tensor", inputs=inputs.float()
+        )
         # This clamp is needed. Sometimes model outputs images out of range.
         outputs.clamp_(0, 1)
         return outputs

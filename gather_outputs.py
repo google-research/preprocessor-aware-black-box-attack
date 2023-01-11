@@ -80,12 +80,13 @@ max_eps = 50
 tokens = []
 # tokens = ['resize', '256']
 # tokens = ['neural-']
-# tokens = ["resize-nearest-None-224-orig512-eps22.8571-hsj-"]
+tokens = ["resize-bicubic-None-224-orig512-eps10.0-hsj-"]
+# tokens = ["neural-cheng2020_anchor-4-orig256-eps10.0-hsj-"]
 # tokens = ["neural-cheng2020_attn-6-orig256-eps10.0-hsj-"]
-# tokens = ["neural-cheng2020_attn-6-orig256-eps10.0-hsj-"]
-tokens = ["neural-bmshj2018_hyperprior-6-orig256-eps10.0-hsj-"]
+# tokens = ["neural-bmshj2018_hyperprior-6-orig256-eps10.0-hsj-"]
 # tokens = ["sr-esrgan-orig56-eps10.0-hsj-"]
-# tokens = ["sr-edsr-orig56-eps10.0-hsj-"]
+# tokens = ["sr-edsr-orig56-eps10.0-qeba-"]
+# tokens = ["resize-bicubic-None-224-orig512-eps10.0-hsj-"]
 
 files = os.listdir("./results/")
 files = [
