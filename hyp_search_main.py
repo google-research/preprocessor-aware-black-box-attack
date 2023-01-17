@@ -34,13 +34,18 @@ if version.parse(sys.version.split()[0]) <= version.parse("3.8.10"):
 
     subprocess.check_output = _hacky_subprocess_fix
 
+    import torch
+    from scipy import special
+
+    def _hacky_erfinv(self):
+        erfinv = torch.from_numpy(special.erfinv(self.numpy()))
+        self.zero_()
+        self.add_(erfinv)
+
+    torch.Tensor.erfinv_ = _hacky_erfinv
+
 # pylint: disable=wrong-import-position
 from preprocess_attack_main import parse_args, run_one_setting
-
-# from mmengine.model.weight_init import trunc_normal_
-# /usr/local/lib/python3.8/dist-packages/mmengine/registry/build_functions.py(121)build_from_cfg()
-# import pdb
-# pdb.set_trace()
 
 print = partial(print, flush=True)  # pylint: disable=redefined-builtin
 
