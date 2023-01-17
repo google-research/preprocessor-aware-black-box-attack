@@ -34,6 +34,10 @@ if version.parse(sys.version.split()[0]) <= version.parse("3.8.10"):
 
     subprocess.check_output = _hacky_subprocess_fix
 
+    # This floating point (core dumped) error is caused by this line in mmengine
+    # https://github.com/open-mmlab/mmengine/blob/main/mmengine/model/weight_init.py#L645
+    # Specifically, the function `erfinv_(x)`. If you don't face this problem,
+    # you can safely comment this out.
     import torch
     from scipy import special
 
