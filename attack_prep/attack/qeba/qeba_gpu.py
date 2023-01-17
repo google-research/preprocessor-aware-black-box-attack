@@ -29,11 +29,6 @@ from attack_prep.attack.qeba.util import load_pgen
 _EPS = 1e-9
 
 
-def _cos_sim(x1, x2):
-    cos = (x1 * x2).sum() / np.sqrt((x1**2).sum() * (x2**2).sum())
-    return cos
-
-
 class QEBA(Attack):
     """QEBA attack."""
 
@@ -275,9 +270,9 @@ class QEBA(Attack):
     def _compute_distance(self, x1, x2):
         use_batch = (x1.ndim > 3) or (x2.ndim > 3)
         if x1.ndim == 3:
-            x1 = x1.unsqueeze(0)
+            x1.unsqueeze_(0)
         if x2.ndim == 3:
-            x2 = x2.unsqueeze(0)
+            x2.unsqueeze_(0)
         assert x1.ndim == x2.ndim
 
         diff = x1 - x2
@@ -371,23 +366,35 @@ class QEBA(Attack):
         else:
             rv = self._gen_custom_basis(num_evals, sample)
 
-        rv /= (rv**2).sum(dim=axis, keepdim=True).sqrt() + _EPS
-        perturbed = sample + delta * rv
+        # rv /= (rv ** 2).sum(dim=axis, keepdim=True).sqrt() + _EPS
+        norm_rv = (rv**2).sum(dim=axis, keepdim=True)
+        norm_rv.sqrt_()
+        norm_rv.clamp_min_(_EPS)
+        rv.div_(norm_rv)
+
+        # perturbed = sample + delta * rv
+        rv.mul_(delta)
+        rv.add_(sample)
+        perturbed = rv
         perturbed.clamp_(self.clip_min, self.clip_max)
 
         # EDIT: apply preprocess if specified
         if self.preprocess is not None:
             perturbed = self.preprocess(perturbed)
             if self.prep_backprop:
-                temp_sample = sample.clone()
+                temp_sample = sample.unsqueeze(0)
                 with torch.enable_grad():
                     temp_sample.requires_grad_()
-                    out = self.preprocess(temp_sample.unsqueeze(0))
+                    out = self.preprocess(temp_sample)
                 sample = out.squeeze(0)
             else:
                 sample = self.preprocess(sample.unsqueeze(0)).squeeze(0)
+        sample.detach_()
 
-        rv = (perturbed - sample) / delta
+        # rv = (perturbed - sample) / delta
+        perturbed.subtract_(sample)
+        perturbed.div_(delta)
+        rv = perturbed
 
         # query the model.
         decisions = decision_function(perturbed)
@@ -403,9 +410,10 @@ class QEBA(Attack):
         # Backprop gradient through the preprocessor
         if self.preprocess is not None and self.prep_backprop:
             with torch.enable_grad():
-                out.backward(gradf.unsqueeze(0))
-                gradf = temp_sample.grad.detach()
-        sample = sample.detach()
+                gradf.unsqueeze_(0)
+                out.backward(gradf)
+                gradf = temp_sample.grad
+                gradf.detach_()
 
         # Get the gradient direction.
         gradf /= gradf.norm() + _EPS
@@ -421,12 +429,14 @@ class QEBA(Attack):
         """
         epsilon = dist / np.sqrt(current_iteration)
         while True:
-            updated = (x + epsilon * update).clamp(self.clip_min, self.clip_max)
-            success = decision_function(updated[None])[0]
+            updated = x + epsilon * update
+            updated.clamp_(self.clip_min, self.clip_max)
+            updated.unsqueeze_(0)
+            success = decision_function(updated)
+            success.squeeze_(0)
             if success:
                 break
-            else:
-                epsilon /= 2
+            epsilon /= 2
 
         return epsilon
 
