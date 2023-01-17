@@ -270,9 +270,9 @@ class QEBA(Attack):
     def _compute_distance(self, x1, x2):
         use_batch = (x1.ndim > 3) or (x2.ndim > 3)
         if x1.ndim == 3:
-            x1.unsqueeze_(0)
+            x1 = x1.unsqueeze(0)
         if x2.ndim == 3:
-            x2.unsqueeze_(0)
+            x2 = x2.unsqueeze(0)
         assert x1.ndim == x2.ndim
 
         diff = x1 - x2
@@ -381,20 +381,18 @@ class QEBA(Attack):
         # EDIT: apply preprocess if specified
         if self.preprocess is not None:
             perturbed = self.preprocess(perturbed)
+            temp_sample = sample.unsqueeze(0)
             if self.prep_backprop:
-                temp_sample = sample.unsqueeze(0)
                 with torch.enable_grad():
                     temp_sample.requires_grad_()
                     out = self.preprocess(temp_sample)
-                sample = out.squeeze(0)
             else:
-                sample = self.preprocess(sample.unsqueeze(0)).squeeze(0)
-        sample.detach_()
+                out = self.preprocess(temp_sample)
+        sample = out.squeeze(0).detach()
 
         # rv = (perturbed - sample) / delta
-        perturbed.subtract_(sample)
-        perturbed.div_(delta)
-        rv = perturbed
+        rv = perturbed - sample
+        rv /= delta
 
         # query the model.
         decisions = decision_function(perturbed)
@@ -405,7 +403,9 @@ class QEBA(Attack):
 
         # Baseline subtraction (when fval differs)
         vals = fval if fval.mean().abs() == 1.0 else fval - fval.mean()
-        gradf = torch.mean(vals * rv, dim=0)
+        # gradf = torch.mean(vals * rv, dim=0)
+        rv.mul_(vals)
+        gradf = rv.mean(dim=0)
 
         # Backprop gradient through the preprocessor
         if self.preprocess is not None and self.prep_backprop:
@@ -414,6 +414,7 @@ class QEBA(Attack):
                 out.backward(gradf)
                 gradf = temp_sample.grad
                 gradf.detach_()
+                gradf.squeeze_(0)
 
         # Get the gradient direction.
         gradf /= gradf.norm() + _EPS

@@ -375,8 +375,7 @@ class HopSkipJump(MinimizationAttack):
         rv = x_advs
 
         multipliers_list: List[ep.Tensor] = []
-        batch_size: int = len(x_advs)
-        ones = ep.ones(x_advs, batch_size)
+        ones = ep.ones(x_advs, len(out))
         for step in range(steps):
             decision = is_adversarial(perturbed[step])
             multipliers_list.append(ep.where(decision, ones, -ones))

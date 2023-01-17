@@ -155,7 +155,7 @@ class Resize(Preprocessor):
         """
         batch_size, num_channels, _, _ = z_adv.shape
         x_shape = x_orig.shape
-        height_x, width_x = x_shape[2], x_shape[3]
+        height_x, width_x = x_shape[-2:]
         if self._interp == "nearest":
             x_orig = x_orig.clone().view(batch_size, num_channels, -1)
             x_orig[:, :, self._prep_idx] = z_adv.view(
