@@ -336,15 +336,26 @@ class HopSkipJump(MinimizationAttack):
             + self._SMALL_NUM
         )
         delta_ = atleast_kd(ep.expand_dims(delta, 0), rv.ndim)
-        scaled_rv = delta_ * rv
 
-        perturbed = x_advs + scaled_rv
-        perturbed = ep.clip(perturbed, 0, 1)
+        # In-place ops to save memory; only works with pytorch
+        # scaled_rv = delta_ * rv
+        # perturbed = x_advs + scaled_rv
+        rv *= delta_
+        rv += x_advs
+        perturbed = rv
+
+        # In-place ops to save memory; only works with pytorch
+        # perturbed = ep.clip(perturbed, 0, 1)
+        perturbed.raw.clamp_(0, 1)
 
         # Apply preprocess in forward pass if specified
         if self.preprocess is not None:
-            perturbed = perturbed.raw.squeeze(1)
-            perturbed = ep.astensor(self.preprocess(perturbed).unsqueeze(1))
+            # In-place ops to save memory; only works with pytorch
+            # perturbed = perturbed.raw.squeeze(1)
+            perturbed.raw.squeeze_(1)
+            perturbed = self.preprocess(perturbed.raw)
+            perturbed.unsqueeze_(1)
+            perturbed = ep.astensor(perturbed)
             if self.prep_backprop:
                 with torch.enable_grad():
                     x_temp = x_advs.raw
@@ -357,7 +368,11 @@ class HopSkipJump(MinimizationAttack):
         # Should rv be re-normalized here? It is not in the original
         # implementation, but it is fixed in later commit:
         # https://github.com/bethgelab/foolbox/commit/d11c90585e1b14385dfd2f6777fe3e047ba25089
-        rv = (perturbed - x_advs) / (delta_ if self._norm_rv else 2)
+        # rv = (perturbed - x_advs) / (delta_ if self._norm_rv else 2)
+        x_advs.raw.mul_(-1)
+        x_advs += perturbed
+        x_advs /= delta_ if self._norm_rv else 2
+        rv = x_advs
 
         multipliers_list: List[ep.Tensor] = []
         batch_size: int = len(x_advs)
@@ -375,13 +390,17 @@ class HopSkipJump(MinimizationAttack):
             # This is variance reduction term (see Eq. (16))
             multipliers - mean,
         )
-        grad = ep.mean(atleast_kd(vals, rv.ndim) * rv, axis=0)
+        # grad = ep.mean(atleast_kd(vals, rv.ndim) * rv, axis=0)
+        rv *= atleast_kd(vals, rv.ndim)
+        grad = ep.mean(rv, axis=0)
 
         # Backprop gradient through the preprocessor
         if self.preprocess is not None and self.prep_backprop:
             with torch.enable_grad():
                 out.backward(grad.raw)
-                grad = ep.astensor(x_temp.grad.detach())
+                grad = x_temp.grad
+                grad.detach_()
+                grad = ep.astensor(grad)
 
         grad /= (
             atleast_kd(ep.norms.l2(flatten(grad, keep=1), axis=-1), grad.ndim)
@@ -469,10 +488,8 @@ class HopSkipJump(MinimizationAttack):
                     "threshold is too low."
                 )
                 break
-        # print(num_queries)
 
         res = self._project(originals, perturbed, highs)
-
         return res, num_queries
 
     def _select_delta(
