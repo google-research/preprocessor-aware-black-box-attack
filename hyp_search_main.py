@@ -14,9 +14,33 @@
 """Run attack by also sweeping a set of pre-defined hyperparameters."""
 
 import os
+import sys
 from functools import partial
 
+from packaging import version
+
+# Calling subprocess.check_output() with python version 3.8.10 or lower will
+# raise NotADirectoryError. When torch calls this to call hipconfig, it does
+# not catch this exception but only FileNotFoundError or PermissionError.
+# This hack makes sure that correct exception is raised.
+if version.parse(sys.version.split()[0]) <= version.parse("3.8.10"):
+    import subprocess
+
+    def _hacky_subprocess_fix(*args, **kwargs):
+        raise FileNotFoundError(
+            "Hacky exception. If this interferes with your workflow, consider "
+            "using python >= 3.8.10 or simply try to comment this out."
+        )
+
+    subprocess.check_output = _hacky_subprocess_fix
+
+# pylint: disable=wrong-import-position
 from preprocess_attack_main import parse_args, run_one_setting
+
+# from mmengine.model.weight_init import trunc_normal_
+# /usr/local/lib/python3.8/dist-packages/mmengine/registry/build_functions.py(121)build_from_cfg()
+# import pdb
+# pdb.set_trace()
 
 print = partial(print, flush=True)  # pylint: disable=redefined-builtin
 
