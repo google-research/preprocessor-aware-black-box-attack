@@ -86,9 +86,13 @@ def _main() -> None:
             f"{clf_api} classification API is not implemented!"
         )
 
-    # import pdb
-    # pdb.set_trace()
-    # clf_pipeline(dataset[1])
+    orig_size: tuple[int, int] = (config["orig_size"], config["orig_size"])
+    dataset: list[np.ndarray] = [
+        np.array(Image.open(fname).resize(orig_size))[..., :3]
+        for fname in filenames
+    ]
+    dataset = np.stack(dataset)
+    dataset = dataset.transpose((0, 3, 1, 2))
 
     # Initialize attack based on preprocessor to extract
     attack_fn = {
