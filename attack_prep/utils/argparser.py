@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Classification API to run extraction attack.",
     )
+    parser.add_argument("--num-extract-perturb-steps", default=100, type=int)
     parser.add_argument(
         "--preprocess", required=True, type=str, help="Specify preprocessor."
     )
