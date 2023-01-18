@@ -119,9 +119,11 @@ class FindUnstablePair:
             "Fisnished. %d queries used for L0 search.", self.num_queries
         )
         logger.info("Start Linf search...")
+        tmp_num_queries = self.num_queries
         img1, img2 = self._binary_search(img1, img2, self._bisect_linf)
         logger.info(
-            "Fisnished. %d queries used for Linf search.", self.num_queries
+            "Fisnished. %d queries used for Linf search.",
+            self.num_queries - tmp_num_queries,
         )
         l1, l2 = self._clf_pipeline([img1, img2])
         self.num_queries += 2
@@ -129,11 +131,17 @@ class FindUnstablePair:
             "Two samples in unstable pairs must be classified as two different "
             f"classes but got {l1} vs {l2}. Please select a different dataset."
         )
-        logger.info("%d queries used to find unstable pair.", self.num_queries)
+        logger.info(
+            "Total of %d queries used to find unstable pair.", self.num_queries
+        )
+        # Need to convert to float because uint8 overflow
+        img1_float = img1.astype(np.float32)
+        img2_float = img2.astype(np.float32)
+        abs_diff = np.abs(img1_float - img2_float)
         logger.info(
             "Distance between unstable pair: L1=%d, L0=%d, Linf=%d",
-            np.abs(img1 - img2).sum(),
+            abs_diff.sum(),
             (img1 != img2).sum(),
-            np.abs(img1 - img2).max(),
+            abs_diff.max(),
         )
         return np.array((img1, img2))

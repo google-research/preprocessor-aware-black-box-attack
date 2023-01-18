@@ -72,31 +72,23 @@ def _main() -> None:
         clf_pipeline = GoogleAPI()
         filenames = ["images/lena.png", "images/ILSVRC2012_val_00000293.jpg"]
     elif clf_api == "imagga":
-        clf_pipeline = ImaggaAPI()
+        clf_pipeline = ImaggaAPI(
+            api_key=config["api_key"], api_secret=config["api_secret"]
+        )
         filenames = ["images/lena.png", "tmp_nsfw.png"]
     elif clf_api == "sightengine":
-        clf_pipeline = SightengineAPI()
+        clf_pipeline = SightengineAPI(
+            api_key=config["api_key"], api_secret=config["api_secret"]
+        )
         filenames = ["images/lena.png", "tmp_nsfw.png"]
     else:
         raise NotImplementedError(
             f"{clf_api} classification API is not implemented!"
         )
 
-    orig_size: tuple[int, int] = (config["orig_size"], config["orig_size"])
-    dataset: list[np.ndarray] = [
-        np.array(Image.open(fname).resize(orig_size))[..., :3]
-        for fname in filenames
-    ]
-    dataset = np.stack(dataset)
-    dataset = dataset.transpose((0, 3, 1, 2))
-
-    assert isinstance(
-        dataset, np.ndarray
-    ), f"dataset must be a NumPy array, but it is {type(dataset)}!"
-    assert dataset.ndim == 4 and dataset.shape[1] == 3, (
-        "dataset must have shape [batch, channel, height, width], but it has "
-        f"shape {dataset.shape}!"
-    )
+    # import pdb
+    # pdb.set_trace()
+    # clf_pipeline(dataset[1])
 
     # Initialize attack based on preprocessor to extract
     attack_fn = {

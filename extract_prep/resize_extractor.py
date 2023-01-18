@@ -54,7 +54,7 @@ class FindResize(FindPreprocessor):
         imgs: np.ndarray,
         output_size: tuple[int, int] = (224, 224),
         interp: str = "bilinear",
-        resize_lib: str = "torch",
+        resize_lib: str = "pil",
     ) -> np.ndarray:
         """Resize images with guessed params."""
         # TODO: Implement other resizing ops
@@ -116,7 +116,7 @@ class FindResize(FindPreprocessor):
                 bpa[:, channel, row, col] -= sign
 
         assert np.max(bpa) <= 255 and np.min(bpa) >= 0
-        logger.debug(
+        logger.info(
             "Total diff: %d",
             np.sum(
                 np.abs(bpa.astype(np.int32) - unstable_pairs.astype(np.int32))
