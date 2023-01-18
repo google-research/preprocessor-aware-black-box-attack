@@ -318,6 +318,7 @@ class HopSkipJump(MinimizationAttack):
         delta: ep.Tensor,
     ) -> ep.Tensor:
         # (steps, bs, ...)
+        batch_size = x_advs.shape[0]
         noise_shape = tuple([steps] + list(x_advs.shape))
 
         if self.smart_noise is not None:
@@ -375,7 +376,7 @@ class HopSkipJump(MinimizationAttack):
         rv = x_advs
 
         multipliers_list: List[ep.Tensor] = []
-        ones = ep.ones(x_advs, len(out))
+        ones = ep.ones(x_advs, batch_size)
         for step in range(steps):
             decision = is_adversarial(perturbed[step])
             multipliers_list.append(ep.where(decision, ones, -ones))

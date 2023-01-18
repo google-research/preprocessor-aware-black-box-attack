@@ -34,8 +34,14 @@ _TIMEOUT = 10
 class ClassifyAPI:
     """Base ClassifyAPI wraps any classification pipeline."""
 
-    def __init__(self, tmp_img_path: str = _TMP_IMG_PATH, **kwargs) -> None:
-        self._tmp_img_path = tmp_img_path
+    def __init__(
+        self,
+        tmp_img_path: str = _TMP_IMG_PATH,
+        timeout: int = _TIMEOUT,
+        **kwargs,
+    ) -> None:
+        self._tmp_img_path: str = tmp_img_path
+        self._timeout: int = timeout
 
     @abc.abstractmethod
     def _run_one(self, img: np.ndarray) -> int | bool:
@@ -47,50 +53,65 @@ class ClassifyAPI:
         return np.array([self._run_one(x) for x in images])
 
 
-def get_imagga(img):
-    if isinstance(img, list) or len(img.shape) == 4:
-        return np.array([get_imagga(y) for y in img])
-    else:
+class ImaggaAPI(ClassifyAPI):
+    """Imagga NSFW (beta) API."""
 
-        api_key = "acc_ef7c0ff4fd1d2e8"
-        api_secret = "8f3dc6a875e2159da43cc40435fff5b1"
-        image_path = "/tmp/img.png"
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._api_key = "acc_ef7c0ff4fd1d2e8"
+        self._api_secret = "8f3dc6a875e2159da43cc40435fff5b1"
 
-        Image.fromarray(np.array(img, dtype=np.uint8)).save(image_path)
-
+    def _run_one(self, img: np.ndarray | torch.Tensor) -> int | bool:
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        img = np.transpose(img, (1, 2, 0))
+        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
         response = requests.post(
             "https://api.imagga.com/v2/categories/nsfw_beta",
-            auth=(api_key, api_secret),
-            files={"image": open(image_path, "rb")},
-            timeout=_TIMEOUT,
+            auth=(self._api_key, self._api_secret),
+            files={"image": open(self._tmp_img_path, "rb")},
+            timeout=self._timeout,
         )
-        print(response.json())
-        for cat in response.json()["result"]["categories"]:
-            if cat["name"]["en"] == "nsfw":
-                return cat["confidence"] > 50
-        return False
+        response = response.json()
+        assert (
+            response["status"]["type"] == "success"
+        ), "Failed response from Imagga API!"
+
+        max_cat, max_conf = None, -1
+        for cat in response["result"]["categories"]:
+            if cat["confidence"] > max_conf:
+                max_conf = cat["confidence"]
+                max_cat = cat["name"]["en"]
+        return max_cat == "nsfw"
 
 
-def get_sightengine(img):
-    if isinstance(img, list) or len(img.shape) == 4:
-        return np.array([get_sightengine(y) for y in img])
-    else:
+class SightengineAPI(ClassifyAPI):
+    """Sightengine nudity API."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._api_user = "516789996"
+        self._api_secret = "imnX7kNtsY2SX4nTmuww"
+
+    def _run_one(self, img: np.ndarray) -> int | bool:
         params = {
-            "models": "nudity",
-            "api_user": "516789996",
-            "api_secret": "imnX7kNtsY2SX4nTmuww",
+            "models": "nudity-2.0",
+            "api_user": self._api_user,
+            "api_secret": self._api_secret,
         }
-        Image.fromarray(np.array(img, dtype=np.uint8)).save("/tmp/img.png")
-        files = {"media": open("/tmp/img.png", "rb")}
-        r = requests.post(
+        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+        files = {"media": open(self._tmp_img_path, "rb")}
+        response = requests.post(
             "https://api.sightengine.com/1.0/check.json",
             files=files,
             data=params,
-            timeout=_TIMEOUT,
+            timeout=self._timeout,
         )
-
-        output = json.loads(r.text)
+        output = json.loads(response.text)
         print(output)
+        import pdb
+
+        pdb.set_trace()
         return output["nudity"]["raw"] > 0.5
 
 
