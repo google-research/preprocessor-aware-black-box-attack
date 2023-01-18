@@ -61,10 +61,28 @@ def _main() -> None:
         prep in config["preprocess"] for prep in ("neural", "sr")
     )
 
-    orig_size: tuple[int, int] = (config["orig_size"], config["orig_size"])
+    # NOTE: Specify your own set initial images and classification API here
+    clf_pipeline: ClassifyAPI
+    if clf_api == "local":
+        prep_model: PreprocessModel
+        prep_model, _ = setup_model(config, device=device)
+        clf_pipeline = PyTorchModelAPI(prep_model)
+        filenames = ["images/lena.png", "images/ILSVRC2012_val_00000293.jpg"]
+    elif clf_api == "google":
+        clf_pipeline = GoogleAPI()
+        filenames = ["images/lena.png", "images/ILSVRC2012_val_00000293.jpg"]
+    elif clf_api == "imagga":
+        clf_pipeline = ImaggaAPI()
+        filenames = ["images/lena.png", "tmp_nsfw.png"]
+    elif clf_api == "sightengine":
+        clf_pipeline = SightengineAPI()
+        filenames = ["images/lena.png", "tmp_nsfw.png"]
+    else:
+        raise NotImplementedError(
+            f"{clf_api} classification API is not implemented!"
+        )
 
-    # NOTE: Specify your own set initial images here.
-    filenames = ["images/lena.png", "tmp_nsfw.png"]
+    orig_size: tuple[int, int] = (config["orig_size"], config["orig_size"])
     dataset: list[np.ndarray] = [
         np.array(Image.open(fname).resize(orig_size))[..., :3]
         for fname in filenames
@@ -79,27 +97,6 @@ def _main() -> None:
         "dataset must have shape [batch, channel, height, width], but it has "
         f"shape {dataset.shape}!"
     )
-
-    # TODO: Get a classification pipeline
-    clf_pipeline: ClassifyAPI
-    if clf_api == "local":
-        prep_model: PreprocessModel
-        prep_model, _ = setup_model(config, device=device)
-        clf_pipeline = PyTorchModelAPI(prep_model)
-    elif clf_api == "google":
-        clf_pipeline = GoogleAPI()
-    elif clf_api == "imagga":
-        clf_pipeline = ImaggaAPI()
-    elif clf_api == "sightengine":
-        clf_pipeline = SightengineAPI()
-    else:
-        raise NotImplementedError(
-            f"{clf_api} classification API is not implemented!"
-        )
-
-    # import pdb
-    # pdb.set_trace()
-    # clf_pipeline(dataset[1])
 
     # Initialize attack based on preprocessor to extract
     attack_fn = {
@@ -130,10 +127,11 @@ def _main() -> None:
         num_succeeds: int = 0
         for _ in tqdm(range(num_trials)):
             is_successful = attack.run(
-                unstable_pairs, prep_params=prep_params, num_steps=100
+                unstable_pairs, prep_params=prep_params, num_steps=config["num_extract_perturb_steps"]
             )
             num_succeeds += is_successful
         print(f"{num_succeeds}/{num_trials}")
+
 
 # unknown variables:
 # - compression
