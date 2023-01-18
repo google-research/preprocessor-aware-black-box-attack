@@ -34,6 +34,7 @@ from extract_prep.classification_api import (
     GoogleAPI,
     ImaggaAPI,
     PyTorchModelAPI,
+    SightengineAPI,
 )
 from extract_prep.extractor import FindCrop
 from extract_prep.find_unstable_pair import FindUnstablePair
@@ -89,10 +90,16 @@ def _main() -> None:
         clf_pipeline = GoogleAPI()
     elif clf_api == "imagga":
         clf_pipeline = ImaggaAPI()
+    elif clf_api == "sightengine":
+        clf_pipeline = SightengineAPI()
     else:
         raise NotImplementedError(
             f"{clf_api} classification API is not implemented!"
         )
+
+    # import pdb
+    # pdb.set_trace()
+    # clf_pipeline(dataset[1])
 
     # Initialize attack based on preprocessor to extract
     attack_fn = {

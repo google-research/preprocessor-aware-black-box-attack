@@ -40,6 +40,14 @@ class ClassifyAPI:
         timeout: int = _TIMEOUT,
         **kwargs,
     ) -> None:
+        """Initialize ClassifyAPI.
+
+        Args:
+            tmp_img_path: Path to temporarily save image before sending it via
+                POST request. Defaults to _TMP_IMG_PATH.
+            timeout: Timeout for online API. Defaults to _TIMEOUT.
+        """
+        _ = kwargs  # Unused
         self._tmp_img_path: str = tmp_img_path
         self._timeout: int = timeout
 
@@ -48,6 +56,7 @@ class ClassifyAPI:
         pass
 
     def __call__(self, images: np.ndarray | list[np.ndarray]) -> np.ndarray:
+        """Run the classification pipeline on a batch of images."""
         if isinstance(images, np.ndarray) and images.ndim == 3:
             images = [images]
         return np.array([self._run_one(x) for x in images])
@@ -57,6 +66,7 @@ class ImaggaAPI(ClassifyAPI):
     """Imagga NSFW (beta) API."""
 
     def __init__(self, **kwargs) -> None:
+        """Initialize Imagga API."""
         super().__init__(**kwargs)
         self._api_key = "acc_ef7c0ff4fd1d2e8"
         self._api_secret = "8f3dc6a875e2159da43cc40435fff5b1"
@@ -89,18 +99,28 @@ class SightengineAPI(ClassifyAPI):
     """Sightengine nudity API."""
 
     def __init__(self, **kwargs) -> None:
+        """Initialize Sightengine API."""
         super().__init__(**kwargs)
-        self._api_user = "516789996"
-        self._api_secret = "imnX7kNtsY2SX4nTmuww"
+        # TODO(remove): This is a temporary API key for testing.
+        # self._api_user = "516789996"
+        # self._api_secret = "imnX7kNtsY2SX4nTmuww"
+        self._api_user = "34934673"
+        self._api_secret = "yFyj4hFoWCqKT7HwY6WE"
 
     def _run_one(self, img: np.ndarray) -> int | bool:
+
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        img = np.transpose(img, (1, 2, 0))
+        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+
         params = {
             "models": "nudity-2.0",
             "api_user": self._api_user,
             "api_secret": self._api_secret,
         }
-        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
         files = {"media": open(self._tmp_img_path, "rb")}
+
         response = requests.post(
             "https://api.sightengine.com/1.0/check.json",
             files=files,
@@ -108,11 +128,19 @@ class SightengineAPI(ClassifyAPI):
             timeout=self._timeout,
         )
         output = json.loads(response.text)
-        print(output)
-        import pdb
+        assert (
+            output["status"] == "success"
+        ), "Failed response from Sightengine API!"
 
-        pdb.set_trace()
-        return output["nudity"]["raw"] > 0.5
+        # Find the most confident category
+        max_cat, max_conf = None, -1
+        for cat, conf in output["nudity"].items():
+            if not isinstance(conf, float):
+                continue
+            if conf > max_conf:
+                max_conf = conf
+                max_cat = cat
+        return max_cat != "none"
 
 
 class GoogleAPI(ClassifyAPI):
@@ -123,6 +151,7 @@ class GoogleAPI(ClassifyAPI):
         Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
         with io.open(self._tmp_img_path, "rb") as image_file:
             content = image_file.read()
+        # pylint: disable=no-member
         image = vision.Image(content=content)
         response = client.safe_search_detection(image=image)
         safe = response.safe_search_annotation

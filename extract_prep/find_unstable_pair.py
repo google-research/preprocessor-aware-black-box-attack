@@ -63,7 +63,8 @@ class FindUnstablePair:
         """Find the "middle" between two images via L0-norm.
 
         Middle image has about a half of its pixels from left image and another
-        half from right image.
+        half from right image. Done when the number of different pixels between
+        two images is 1.
         """
         mask = np.random.random_integers(0, 1, size=right.shape)
         mid = left * mask + right * (1 - mask)
@@ -114,13 +115,19 @@ class FindUnstablePair:
 
         logger.info("Start L0 search...")
         img1, img2 = self._binary_search(img1, img2, self._bisect_l0)
+        logger.info(
+            "Fisnished. %d queries used for L0 search.", self.num_queries
+        )
         logger.info("Start Linf search...")
         img1, img2 = self._binary_search(img1, img2, self._bisect_linf)
+        logger.info(
+            "Fisnished. %d queries used for Linf search.", self.num_queries
+        )
         l1, l2 = self._clf_pipeline([img1, img2])
         self.num_queries += 2
         assert l1 != l2, (
             "Two samples in unstable pairs must be classified as two different "
-            "classes. Please select a different dataset."
+            f"classes but got {l1} vs {l2}. Please select a different dataset."
         )
         logger.info("%d queries used to find unstable pair.", self.num_queries)
         logger.info(
