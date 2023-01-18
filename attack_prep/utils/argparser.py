@@ -42,6 +42,18 @@ def parse_args() -> argparse.Namespace:
         help="Classification API to run extraction attack.",
     )
     parser.add_argument(
+        "--api-key",
+        default=None,
+        type=str,
+        help="Classification API key.",
+    )
+    parser.add_argument(
+        "--api-secret",
+        default=None,
+        type=str,
+        help="Classification API secret.",
+    )
+    parser.add_argument(
         "--preprocess", required=True, type=str, help="Specify preprocessor."
     )
     parser.add_argument(

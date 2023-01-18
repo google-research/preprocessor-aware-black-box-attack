@@ -36,6 +36,8 @@ class ClassifyAPI:
 
     def __init__(
         self,
+        api_key: str | None = None,
+        api_secret: str | None = None,
         tmp_img_path: str = _TMP_IMG_PATH,
         timeout: int = _TIMEOUT,
         **kwargs,
@@ -48,6 +50,8 @@ class ClassifyAPI:
             timeout: Timeout for online API. Defaults to _TIMEOUT.
         """
         _ = kwargs  # Unused
+        self._api_key: str | None = api_key
+        self._api_secret: str | None = api_secret
         self._tmp_img_path: str = tmp_img_path
         self._timeout: int = timeout
 
@@ -65,12 +69,6 @@ class ClassifyAPI:
 class ImaggaAPI(ClassifyAPI):
     """Imagga NSFW (beta) API."""
 
-    def __init__(self, **kwargs) -> None:
-        """Initialize Imagga API."""
-        super().__init__(**kwargs)
-        self._api_key = "acc_ef7c0ff4fd1d2e8"
-        self._api_secret = "8f3dc6a875e2159da43cc40435fff5b1"
-
     def _run_one(self, img: np.ndarray | torch.Tensor) -> int | bool:
         if isinstance(img, torch.Tensor):
             img = img.cpu().numpy()
@@ -85,7 +83,7 @@ class ImaggaAPI(ClassifyAPI):
         response = response.json()
         assert (
             response["status"]["type"] == "success"
-        ), "Failed response from Imagga API!"
+        ), f"Failed response from Imagga API!\n{response}"
 
         max_cat, max_conf = None, -1
         for cat in response["result"]["categories"]:
@@ -98,17 +96,7 @@ class ImaggaAPI(ClassifyAPI):
 class SightengineAPI(ClassifyAPI):
     """Sightengine nudity API."""
 
-    def __init__(self, **kwargs) -> None:
-        """Initialize Sightengine API."""
-        super().__init__(**kwargs)
-        # TODO(remove): This is a temporary API key for testing.
-        # self._api_user = "516789996"
-        # self._api_secret = "imnX7kNtsY2SX4nTmuww"
-        self._api_user = "34934673"
-        self._api_secret = "yFyj4hFoWCqKT7HwY6WE"
-
     def _run_one(self, img: np.ndarray) -> int | bool:
-
         if isinstance(img, torch.Tensor):
             img = img.cpu().numpy()
         img = np.transpose(img, (1, 2, 0))
@@ -116,7 +104,7 @@ class SightengineAPI(ClassifyAPI):
 
         params = {
             "models": "nudity-2.0",
-            "api_user": self._api_user,
+            "api_user": self._api_key,
             "api_secret": self._api_secret,
         }
         files = {"media": open(self._tmp_img_path, "rb")}
@@ -147,10 +135,16 @@ class GoogleAPI(ClassifyAPI):
     """Google Cloud Vision Safe Search API."""
 
     def _run_one(self, img: np.ndarray) -> int | bool:
-        client = vision.ImageAnnotatorClient()
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        img = np.transpose(img, (1, 2, 0))
         Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+
         with io.open(self._tmp_img_path, "rb") as image_file:
             content = image_file.read()
+
+        client = vision.ImageAnnotatorClient()
+
         # pylint: disable=no-member
         image = vision.Image(content=content)
         response = client.safe_search_detection(image=image)

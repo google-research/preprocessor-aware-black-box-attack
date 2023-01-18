@@ -89,17 +89,17 @@ def _main() -> None:
     elif clf_api == "google":
         clf_pipeline = GoogleAPI()
     elif clf_api == "imagga":
-        clf_pipeline = ImaggaAPI()
+        clf_pipeline = ImaggaAPI(
+            api_key=config["api_key"], api_secret=config["api_secret"]
+        )
     elif clf_api == "sightengine":
-        clf_pipeline = SightengineAPI()
+        clf_pipeline = SightengineAPI(
+            api_key=config["api_key"], api_secret=config["api_secret"]
+        )
     else:
         raise NotImplementedError(
             f"{clf_api} classification API is not implemented!"
         )
-
-    # import pdb
-    # pdb.set_trace()
-    # clf_pipeline(dataset[1])
 
     # Initialize attack based on preprocessor to extract
     attack_fn = {
@@ -134,6 +134,7 @@ def _main() -> None:
             )
             num_succeeds += is_successful
         print(f"{num_succeeds}/{num_trials}")
+
 
 # unknown variables:
 # - compression
