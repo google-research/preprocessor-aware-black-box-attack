@@ -127,7 +127,9 @@ def _main() -> None:
         num_succeeds: int = 0
         for _ in tqdm(range(num_trials)):
             is_successful = attack.run(
-                unstable_pairs, prep_params=prep_params, num_steps=config["num_extract_perturb_steps"]
+                unstable_pairs,
+                prep_params=prep_params,
+                num_steps=config["num_extract_perturb_steps"],
             )
             num_succeeds += is_successful
         print(f"{num_succeeds}/{num_trials}")
