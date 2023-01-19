@@ -46,6 +46,7 @@ from extract_prep.classification_api import (
 from extract_prep.extractor import FindCrop
 from extract_prep.find_unstable_pair import FindUnstablePair
 from extract_prep.resize_extractor import FindResize
+from extract_prep.utils import get_num_trials
 
 logger = logging.getLogger(__name__)
 
@@ -120,9 +121,12 @@ def _main(config: dict[str, str | int | float]) -> None:
     unstable_pairs, num_queries = find_unstable_pair.find_unstable_pair(dataset)
     num_queries_total += num_queries
 
+    num_trials: int = get_num_trials(
+        config, clf_pipeline, unstable_pairs, pval=0.05, num_noises=1000
+    )
+
     # TODO: params
     # TODO: Have to guess the first preprocessor first unless they are exchandable
-    num_trials: int = config["num_extract_trials"]
     prep_params_guess = {
         "output_size": [(224, 224), (256, 256), (299, 299)],
         # "output_size": [(224, 224)],
@@ -151,8 +155,13 @@ def _main(config: dict[str, str | int | float]) -> None:
                 prep_params=prep_params,
                 num_steps=config["num_extract_perturb_steps"],
             )
-            num_succeeds += is_successful
             num_queries_total += num_queries
+            if not is_successful:
+                logger.info(
+                    "Guessed params are incorrect. Moving on to next guess..."
+                )
+                break
+            num_succeeds += is_successful
 
         logger.info(
             "# successes: %d/%d, # queries used so far: %d",
@@ -170,10 +179,12 @@ def _main(config: dict[str, str | int | float]) -> None:
         )
         if config["api"] == "huggingface":
             results[-1]["model_url"] = config["model_url"]
+
         # If all trials are successful, keep parameter combination
         if num_succeeds == num_trials:
             candidate_params.append(prep_params)
-            # TODO: Break out of loop early if candidate is found
+            logger.info("Candidate found! Stopping search.")
+            break
 
     logger.info("Total number of queries: %d", num_queries_total)
     logger.info(
@@ -198,13 +209,12 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
     # hf_hub.DatasetSearchArguments() is buggy so we go with searching
     # "imagenet" in tags instead
     models = filter(lambda m: any("imagenet" in t for t in m.tags), models)
-    model_ids = random.sample(
-        [m.modelId for m in models], base_config["num_hf_models"] * 2
-    )
+    num_total: int = base_config["num_hf_models"]
+    model_ids = random.sample([m.modelId for m in models], len(list(models)))
 
     num_finished: int = 0
-    for i, model_id in enumerate(model_ids):
-        logger.info("[%3d/%3d]: %s", i + 1, len(model_ids), model_id)
+    for model_id in model_ids:
+        logger.info("[%3d/%3d]: %s", num_finished + 1, num_total, model_id)
         url = f"https://api-inference.huggingface.co/models/{model_id}"
         logger.info("           url=%s", url)
         config = copy.deepcopy(base_config)
@@ -218,11 +228,11 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
             logger.info("Skipping...")
 
         logger.info("=" * 20)
-        if num_finished >= base_config["num_hf_models"]:
+        if num_finished >= num_total:
             break
 
     logger.info(
-        "Finished %d/%d models.", num_finished, base_config["num_hf_models"]
+        "Finished %d/%d models.", num_finished, num_total
     )
 
 
@@ -230,7 +240,7 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
 # - compression
 #   * jpeg
 # - initial resize
-#   * size of the resize (e.g., 256x256)
+#   * size of the resize (e.g., 256x256) 224, 256, 299, 384, 512
 #   * mode for the resize (e.g., bilinear or nearest)
 # - crop
 #   * size of the crop

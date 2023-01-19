@@ -255,5 +255,5 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--num-hf-models", default=1, type=int)
-    parser.add_argument("--num-extract-trials", default=10, type=int)
+    parser.add_argument("--num-extract-trials", default=None, type=int)
     return parser.parse_args()
