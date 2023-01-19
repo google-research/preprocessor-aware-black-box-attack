@@ -241,7 +241,7 @@ def parse_args() -> argparse.Namespace:
         help="URL of model to use as classification API (HuggingFace Hub).",
     )
     parser.add_argument(
-        "--resize-lib",
+        "--extract-resize-lib",
         default="pil",
         type=str,
         help="Backend/library used for resizing preprocessor (extraction).",

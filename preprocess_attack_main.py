@@ -52,17 +52,20 @@ def _compute_dist(
 ) -> torch.Tensor:
     """Compute distance between images and x_adv."""
     dist: torch.Tensor
+    diff = images - x_adv
+    num_samples = len(images)
     if order == "2":
-        dist = (torch.sum((images - x_adv) ** 2, (1, 2, 3)) ** 0.5).cpu()
+        diff.square_()
+        dist = diff.view(num_samples, -1).sum(1)
+        dist.sqrt_()
     elif order == "inf":
-        dist = (
-            (images - x_adv).abs().reshape(images.size(0), -1).max(1)[0].cpu()
-        )
+        diff.abs_()
+        dist = diff.view(num_samples, -1).max(1)[0]
     else:
         raise NotImplementedError(
             f'Invalid norm; p must be "2", but it is {order}.'
         )
-    return dist
+    return dist.cpu()
 
 
 def _print_result(
