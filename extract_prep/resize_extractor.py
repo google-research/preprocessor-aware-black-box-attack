@@ -22,8 +22,8 @@ import cv2
 import numpy as np
 import torch
 from torchvision import transforms
+from torchvision.transforms import InterpolationMode
 
-from attack_prep.preprocessor.util import BICUBIC, BILINEAR, NEAREST
 from extract_prep.extractor import FindPreprocessor
 from extract_prep.utils import pil_resize
 
@@ -36,9 +36,12 @@ def _torch_resize(
     interp: str = "bilinear",
 ) -> np.ndarray:
     interp_mode = {
-        "nearest": NEAREST,
-        "bilinear": BILINEAR,
-        "bicubic": BICUBIC,
+        "nearest": InterpolationMode.NEAREST,
+        "bilinear": InterpolationMode.BILINEAR,
+        "bicubic": InterpolationMode.BICUBIC,
+        "lanczos": InterpolationMode.LANCZOS,
+        "area": InterpolationMode.BOX,
+        "hamming": InterpolationMode.HAMMING,
     }[interp]
     # antialias is False by default when input is torch.Tensor
     resize = transforms.Resize(
@@ -142,8 +145,8 @@ class FindResize(FindPreprocessor):
                 bpa = tmp_bpa
 
         assert np.max(bpa) <= 255 and np.min(bpa) >= 0
-        logger.info(
-            "Total diff: %d",
+        logger.debug(
+            "Total L1 dist from original unstable pairs: %d",
             np.sum(
                 np.abs(bpa.astype(np.int32) - unstable_pairs.astype(np.int32))
             )

@@ -23,6 +23,9 @@ import sys
 import time
 from copy import deepcopy
 
+import attack_prep.utils.backward_compat  # pylint: disable=unused-import
+
+# pylint: disable=wrong-import-order
 import numpy as np
 import torch
 import torchvision

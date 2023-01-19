@@ -20,6 +20,7 @@ import argparse
 
 def parse_args() -> argparse.Namespace:
     """Get a common argparser."""
+    # TODO(document): Improve documentation on args.
     parser = argparse.ArgumentParser(
         description="Known-preprocessor Attack", add_help=True
     )
@@ -161,17 +162,13 @@ def parse_args() -> argparse.Namespace:
         "--denoise-model",
         default=None,
         type=str,
-        help=(
-            'Name of model to use for denoising. Options are "swinir".'
-        ),
+        help=('Name of model to use for denoising. Options are "swinir".'),
     )
     parser.add_argument(
         "--denoise-mode",
         default=None,
         type=str,
-        help=(
-            'Name of model to use for denoising. Options are "swinir".'
-        ),
+        help=('Name of model to use for denoising. Options are "swinir".'),
     )
     parser.add_argument(
         "--denoise-config-path",
@@ -217,7 +214,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--qeba-subspace", default="resize4", type=str)
     parser.add_argument("--qeba-gamma", default=0.01, type=float)
 
-# ================================= Extrcat ================================= #
+    # ================================= Extrcat ================================= #
     parser.add_argument(
         "--api",
         default="local",
@@ -249,4 +246,14 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Backend/library used for resizing preprocessor (extraction).",
     )
+    parser.add_argument(
+        "--run-hf-exp",
+        action="store_true",
+        help=(
+            "If True, run extraction attack on `num_hf_models` randomly "
+            "selected models from HuggingFace Hub."
+        ),
+    )
+    parser.add_argument("--num-hf-models", default=1, type=int)
+    parser.add_argument("--num-extract-trials", default=10, type=int)
     return parser.parse_args()

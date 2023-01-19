@@ -388,7 +388,7 @@ class QEBA(Attack):
                     out = self.preprocess(temp_sample)
             else:
                 out = self.preprocess(temp_sample)
-        sample = out.squeeze(0).detach()
+            sample = out.squeeze(0).detach()
 
         # rv = (perturbed - sample) / delta
         rv = perturbed - sample

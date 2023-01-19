@@ -26,6 +26,9 @@ pip install foolbox kornia adversarial-robustness-toolbox[pytorch] tensorflow ei
 pip install git+https://github.com/fra31/auto-attack
 # Flag --no-deps is important here to prevent reinstall pytorch on pip
 pip install torchjpeg compressai --no-deps
+
+# APIs for experimenting with extraction attack
+pip install huggingface_hub google-cloud-vision
 ```
 
 - Install MMEditing using this [instruction](https://mmediting.readthedocs.io/en/dev-1.x/get_started/install.html#best-practices).

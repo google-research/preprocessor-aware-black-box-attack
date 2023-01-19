@@ -14,39 +14,9 @@
 """Run attack by also sweeping a set of pre-defined hyperparameters."""
 
 import os
-import sys
 from functools import partial
 
-from packaging import version
-
-# Calling subprocess.check_output() with python version 3.8.10 or lower will
-# raise NotADirectoryError. When torch calls this to call hipconfig, it does
-# not catch this exception but only FileNotFoundError or PermissionError.
-# This hack makes sure that correct exception is raised.
-if version.parse(sys.version.split()[0]) <= version.parse("3.8.10"):
-    import subprocess
-
-    def _hacky_subprocess_fix(*args, **kwargs):
-        raise FileNotFoundError(
-            "Hacky exception. If this interferes with your workflow, consider "
-            "using python >= 3.8.10 or simply try to comment this out."
-        )
-
-    subprocess.check_output = _hacky_subprocess_fix
-
-    # This floating point (core dumped) error is caused by this line in mmengine
-    # https://github.com/open-mmlab/mmengine/blob/main/mmengine/model/weight_init.py#L645
-    # Specifically, the function `erfinv_(x)`. If you don't face this problem,
-    # you can safely comment this out.
-    import torch
-    from scipy import special
-
-    def _hacky_erfinv(self):
-        erfinv = torch.from_numpy(special.erfinv(self.numpy()))
-        self.zero_()
-        self.add_(erfinv)
-
-    torch.Tensor.erfinv_ = _hacky_erfinv
+import attack_prep.utils.backward_compat  # pylint: disable=unused-import
 
 # pylint: disable=wrong-import-position
 from preprocess_attack_main import parse_args, run_one_setting

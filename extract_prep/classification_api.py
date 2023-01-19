@@ -34,6 +34,10 @@ _TIMEOUT = 10
 logger = logging.getLogger(__name__)
 
 
+class ResponseError(Exception):
+    """Raised when online API returns an error response."""
+
+
 class ClassifyAPI:
     """Base ClassifyAPI wraps any classification pipeline."""
 
@@ -86,9 +90,8 @@ class ImaggaAPI(ClassifyAPI):
             timeout=self._timeout,
         )
         response = response.json()
-        assert (
-            response["status"]["type"] == "success"
-        ), f"Failed response from Imagga API!\n{response}"
+        if response["status"]["type"] != "success":
+            raise ResponseError(f"Failed response from Imagga API!\n{response}")
 
         max_cat, max_conf = None, -1
         for cat in response["result"]["categories"]:
@@ -121,9 +124,10 @@ class SightengineAPI(ClassifyAPI):
             timeout=self._timeout,
         )
         output = json.loads(response.text)
-        assert (
-            output["status"] == "success"
-        ), "Failed response from Sightengine API!"
+        if output["status"] != "success":
+            raise ResponseError(
+                f"Failed response from Sightengine API!\n{output}"
+            )
 
         # Find the most confident category
         max_cat, max_conf = None, -1
@@ -233,7 +237,7 @@ class HuggingfaceAPI(ClassifyAPI):
             elif isinstance(output, list) and "label" in output[0]:
                 break
             else:
-                raise ValueError(
+                raise ResponseError(
                     f"Failed response from Hugging Face API!\n{output}"
                 )
 
