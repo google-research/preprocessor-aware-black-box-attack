@@ -41,6 +41,7 @@ class FindPreprocessor:
         """
         self._classifier_api: ClassifyAPI = classifier_api
         self._init_size: tuple[int, int] = init_size
+        self._num_queries: int = 0
 
     def init(self, samples: np.ndarray) -> np.ndarray:
         """Initialize input samples for unstable pairs.

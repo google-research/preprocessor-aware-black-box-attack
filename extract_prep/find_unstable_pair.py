@@ -144,4 +144,4 @@ class FindUnstablePair:
             (img1 != img2).sum(),
             abs_diff.max(),
         )
-        return np.array((img1, img2))
+        return np.array((img1, img2)), self.num_queries

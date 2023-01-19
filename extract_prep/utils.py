@@ -29,6 +29,8 @@ def pil_resize(
         "nearest": Image.Resampling.NEAREST,
         "bilinear": Image.Resampling.BILINEAR,
         "bicubic": Image.Resampling.BICUBIC,
+        "lanczos": Image.Resampling.LANCZOS,
+        "area": Image.Resampling.BOX,
     }[interp]
     resized_imgs = []
     for img in imgs:

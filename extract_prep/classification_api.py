@@ -18,6 +18,8 @@ from __future__ import annotations
 import abc
 import io
 import json
+import logging
+import time
 
 import numpy as np
 import requests
@@ -29,6 +31,7 @@ from attack_prep.utils.model import PreprocessModel
 
 _TMP_IMG_PATH = "/tmp/img.png"
 _TIMEOUT = 10
+logger = logging.getLogger(__name__)
 
 
 class ClassifyAPI:
@@ -45,6 +48,8 @@ class ClassifyAPI:
         """Initialize ClassifyAPI.
 
         Args:
+            api_key: API key for online API.
+            api_secret: API secret for online API.
             tmp_img_path: Path to temporarily save image before sending it via
                 POST request. Defaults to _TMP_IMG_PATH.
             timeout: Timeout for online API. Defaults to _TIMEOUT.
@@ -161,6 +166,12 @@ class PyTorchModelAPI(ClassifyAPI):
         device: str = "cuda",
         **kwargs,
     ) -> None:
+        """Initialize the PyTorch model API.
+
+        Args:
+            prep_model: Model with preprocessor. Defaults to None.
+            device: Device of model. Defaults to "cuda".
+        """
         super().__init__(**kwargs)
         self._prep_model: PreprocessModel = prep_model
         self._device: str = device
@@ -172,3 +183,58 @@ class PyTorchModelAPI(ClassifyAPI):
         if timg.ndim == 3:
             timg.unsqueeze_(0)
         return self._prep_model(timg).argmax(1).cpu().numpy()
+
+
+class HuggingfaceAPI(ClassifyAPI):
+    """Hugging Face inference API."""
+
+    def __init__(
+        self,
+        model_url: str | None = None,
+        **kwargs,
+    ) -> None:
+        """Initialize the Hugging Face API.
+
+        Args:
+            model_url: URL of model to use inference from. Defaults to None.
+        """
+        super().__init__(**kwargs)
+        self._model_url: str = model_url
+
+    def _run_one(self, img: np.ndarray) -> str:
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        img = np.transpose(img, (1, 2, 0))
+        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+
+        with open(self._tmp_img_path, "rb") as file:
+            data = file.read()
+
+        def _post_request():
+            response = requests.request(
+                "POST",
+                self._model_url,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                data=data,
+                timeout=self._timeout,
+            )
+            output = json.loads(response.content.decode("utf-8"))
+            return output
+
+        while True:
+            output = _post_request()
+            if "error" in output and "is currently loading" in output["error"]:
+                # Wait 10% longer than the estimated time
+                wait_time = int(output["estimated_time"] * 1.1)
+                logger.info(
+                    "%s, waiting %d seconds", output["error"], wait_time
+                )
+                time.sleep(wait_time)
+            elif isinstance(output, list) and "label" in output[0]:
+                break
+            else:
+                raise ValueError(
+                    f"Failed response from Hugging Face API!\n{output}"
+                )
+
+        return output[0]["label"]

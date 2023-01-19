@@ -32,6 +32,7 @@ from attack_prep.utils.model import PreprocessModel, setup_model
 from extract_prep.classification_api import (
     ClassifyAPI,
     GoogleAPI,
+    HuggingfaceAPI,
     ImaggaAPI,
     PyTorchModelAPI,
     SightengineAPI,
@@ -71,6 +72,11 @@ def _main() -> None:
     elif clf_api == "google":
         clf_pipeline = GoogleAPI()
         filenames = ["images/lena.png", "images/ILSVRC2012_val_00000293.jpg"]
+    elif clf_api == "huggingface":
+        clf_pipeline = HuggingfaceAPI(
+            api_key=config["api_key"], model_url=config["model_url"]
+        )
+        filenames = ["images/lena.png", "images/ILSVRC2012_val_00000293.jpg"]
     elif clf_api == "imagga":
         clf_pipeline = ImaggaAPI(
             api_key=config["api_key"], api_secret=config["api_secret"]
@@ -103,32 +109,61 @@ def _main() -> None:
     dataset = attack.init(dataset)
 
     # Find unstable pair from dataset
+    num_queries_total: int = 0
     find_unstable_pair = FindUnstablePair(clf_pipeline)
-    unstable_pairs: np.ndarray = find_unstable_pair.find_unstable_pair(dataset)
+    unstable_pairs, num_queries = find_unstable_pair.find_unstable_pair(dataset)
+    num_queries_total += num_queries
 
     # TODO: params
     # TODO: Have to guess the first preprocessor first unless they are exchandable
     num_trials: int = 20
     prep_params_guess = {
-        "output_size": [(224, 224), (256, 256), (512, 512)],
+        # "output_size": [(224, 224), (256, 256), (512, 512)],
+        "output_size": [(256, 256)],
         "interp": ["nearest", "bilinear", "bicubic"],
+        "resize_lib": ["torch"],
     }
 
     # Create combinations of attack parameters and run attack
     keys, values = zip(*prep_params_guess.items())
     prep_params_list = [dict(zip(keys, v)) for v in itertools.product(*values)]
-    for prep_params in prep_params_list:
+    candidate_params = []
+    for i, prep_params in enumerate(prep_params_list):
+        # Try one guessed parameter combination
         param_str = ", ".join(f"{k}={v}" for k, v in prep_params.items())
-        logger.info("Trying parameters: %s", param_str)
+        logger.info(
+            "Trying parameters %d/%d: %s",
+            i + 1,
+            len(prep_params_list),
+            param_str,
+        )
         num_succeeds: int = 0
         for _ in tqdm(range(num_trials)):
-            is_successful = attack.run(
+            is_successful, num_queries = attack.run(
                 unstable_pairs,
                 prep_params=prep_params,
                 num_steps=config["num_extract_perturb_steps"],
             )
             num_succeeds += is_successful
-        print(f"{num_succeeds}/{num_trials}")
+            num_queries_total += num_queries
+
+        logger.info(
+            "# successes: %d/%d, # queries used so far: %d)",
+            num_succeeds,
+            num_trials,
+            num_queries_total,
+        )
+        # If all trials are successful, keep parameter combination
+        if num_succeeds == num_trials:
+            candidate_params.append(prep_params)
+
+    logger.info("Total number of queries: %d", num_queries_total)
+    logger.info(
+        "There are %d possible candidate(s) out of %d:\n%s",
+        len(candidate_params),
+        len(prep_params_list),
+        candidate_params,
+    )
 
 
 # unknown variables:

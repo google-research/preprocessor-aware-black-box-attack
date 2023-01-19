@@ -36,25 +36,6 @@ def parse_args() -> argparse.Namespace:
         help="Name of ImageNet classifier to load from timm.",
     )
     parser.add_argument(
-        "--api",
-        default="local",
-        type=str,
-        help="Classification API to run extraction attack.",
-    )
-    parser.add_argument("--num-extract-perturb-steps", default=100, type=int)
-    parser.add_argument(
-        "--api-key",
-        default=None,
-        type=str,
-        help="Classification API key.",
-    )
-    parser.add_argument(
-        "--api-secret",
-        default=None,
-        type=str,
-        help="Classification API secret.",
-    )
-    parser.add_argument(
         "--preprocess", required=True, type=str, help="Specify preprocessor."
     )
     parser.add_argument(
@@ -235,4 +216,37 @@ def parse_args() -> argparse.Namespace:
     # QEBA Attack
     parser.add_argument("--qeba-subspace", default="resize4", type=str)
     parser.add_argument("--qeba-gamma", default=0.01, type=float)
+
+# ================================= Extrcat ================================= #
+    parser.add_argument(
+        "--api",
+        default="local",
+        type=str,
+        help="Classification API to run extraction attack.",
+    )
+    parser.add_argument("--num-extract-perturb-steps", default=100, type=int)
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        type=str,
+        help="Classification API key.",
+    )
+    parser.add_argument(
+        "--api-secret",
+        default=None,
+        type=str,
+        help="Classification API secret.",
+    )
+    parser.add_argument(
+        "--model-url",
+        default=None,
+        type=str,
+        help="URL of model to use as classification API (HuggingFace Hub).",
+    )
+    parser.add_argument(
+        "--resize-lib",
+        default="pil",
+        type=str,
+        help="Backend/library used for resizing preprocessor (extraction).",
+    )
     return parser.parse_args()
