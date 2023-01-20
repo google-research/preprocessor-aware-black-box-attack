@@ -62,7 +62,8 @@ def get_num_trials(
 
     logger.info(
         "Given num_trials is None. Running a quick test to estimate "
-        "num_trials that yield p-value of at most 0.05."
+        "num_trials that yield p-value of at most %f.",
+        pval,
     )
     orig_labels = clf_pipeline(unstable_pairs)
     # Sample noise in unit L1 ball
@@ -71,12 +72,22 @@ def get_num_trials(
     # noise /=  np.abs(noise).sum(tuple(range(1, unstable_pairs.ndim)), keepdims=True)
     # noise *= config["num_extract_perturb_steps"]
 
-    # randint num_noises times for each c, h, w
-    
-    perturbed = np.tile(unstable_pairs, (num_noises, 1, 1, 1))
-    perturbed = perturbed.reshape((num_noises,) + unstable_pairs.shape)
-    perturbed += noise[:, None]
-    perturbed = np.clip(perturbed, 0, 255).astype(np.uint8)
+    # Perturb unstable pairs the same way we generating the geussing samples
+    _, channels, height, width = unstable_pairs.shape
+    noise = np.zeros((num_noises,) + unstable_pairs.shape)
+    idx = np.arange(num_noises)
+    for _ in range(config["num_extract_perturb_steps"]):
+        channel_ = np.random.randint(0, channels, size=num_noises)
+        height_ = np.random.randint(0, height, size=num_noises)
+        width_ = np.random.randint(0, width, size=num_noises)
+        sign = np.random.choice([-1, 1], size=(num_noises, 1))
+        noise[idx, :, channel_, height_, width_] += sign
+
+    perturbed = np.tile(unstable_pairs[None], (num_noises, 1, 1, 1, 1))
+    perturbed = perturbed.astype(noise.dtype)
+    perturbed += noise
+    np.clip(perturbed, 0, 255, out=perturbed)
+    perturbed = perturbed.astype(np.uint8)
 
     # Count the number of noises that change the labels
     num_diffs = 0
@@ -93,9 +104,10 @@ def get_num_trials(
     )
 
     # Compute num_trials to yield p-value of at most pval
-    num_trials = np.ceil(np.log(pval) / np.log(1 - prob_diff))
+    num_trials = int(np.ceil(np.log(pval) / np.log(1 - prob_diff)))
     logger.info(
-        "Estimated num_trials to yield p-value of at most 0.05: %d",
+        "Estimated num_trials to yield p-value of at most %f: %d",
+        pval,
         num_trials,
     )
     return num_trials

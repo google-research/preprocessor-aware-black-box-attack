@@ -122,15 +122,15 @@ def _main(config: dict[str, str | int | float]) -> None:
     num_queries_total += num_queries
 
     num_trials: int = get_num_trials(
-        config, clf_pipeline, unstable_pairs, pval=0.05, num_noises=1000
+        config, clf_pipeline, unstable_pairs, pval=0.01, num_noises=1000
     )
 
     # TODO: params
     # TODO: Have to guess the first preprocessor first unless they are exchandable
     prep_params_guess = {
-        "output_size": [(224, 224), (256, 256), (299, 299)],
+        "output_size": [(224, 224), (256, 256), (299, 299), (384, 384), (512, 512)],
         # "output_size": [(224, 224)],
-        "interp": ["nearest", "bilinear", "bicubic"],
+        "interp": ["bicubic", "bilinear", "nearest"],
         # "interp": ["bilinear"],
         "resize_lib": ["pil"],
     }
@@ -209,14 +209,16 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
     # hf_hub.DatasetSearchArguments() is buggy so we go with searching
     # "imagenet" in tags instead
     models = filter(lambda m: any("imagenet" in t for t in m.tags), models)
+    models = list(models)
     num_total: int = base_config["num_hf_models"]
-    model_ids = random.sample([m.modelId for m in models], len(list(models)))
+    model_ids = random.sample([m.modelId for m in models], len(models))
 
     num_finished: int = 0
     for model_id in model_ids:
-        logger.info("[%3d/%3d]: %s", num_finished + 1, num_total, model_id)
         url = f"https://api-inference.huggingface.co/models/{model_id}"
-        logger.info("           url=%s", url)
+        logger.info(
+            "[%3d/%3d]: %s (%s)", num_finished + 1, num_total, model_id, url
+        )
         config = copy.deepcopy(base_config)
         config["model_url"] = url
 
@@ -231,9 +233,7 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
         if num_finished >= num_total:
             break
 
-    logger.info(
-        "Finished %d/%d models.", num_finished, num_total
-    )
+    logger.info("Finished %d/%d models.", num_finished, num_total)
 
 
 # unknown variables:
