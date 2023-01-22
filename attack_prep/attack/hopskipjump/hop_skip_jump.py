@@ -361,7 +361,7 @@ class HopSkipJump(MinimizationAttack):
                 with torch.enable_grad():
                     x_temp = x_advs.raw
                     x_temp.requires_grad_()
-                    out = self.preprocess(x_temp)
+                    out = self.preprocess(x_temp).clone()
                 x_advs = ep.astensor(out.detach())
             else:
                 x_advs = ep.astensor(self.preprocess(x_advs.raw))
