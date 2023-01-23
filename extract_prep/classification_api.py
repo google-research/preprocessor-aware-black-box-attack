@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import time
+import uuid
 
 import numpy as np
 import requests
@@ -29,7 +30,6 @@ from PIL import Image
 
 from attack_prep.utils.model import PreprocessModel
 
-_TMP_IMG_PATH = "/tmp/img.png"
 _TIMEOUT = 10
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class ClassifyAPI:
         self,
         api_key: str | None = None,
         api_secret: str | None = None,
-        tmp_img_path: str = _TMP_IMG_PATH,
+        tmp_img_path: str | None = None,
         timeout: int = _TIMEOUT,
         **kwargs,
     ) -> None:
@@ -61,8 +61,12 @@ class ClassifyAPI:
         _ = kwargs  # Unused
         self._api_key: str | None = api_key
         self._api_secret: str | None = api_secret
-        self._tmp_img_path: str = tmp_img_path
         self._timeout: int = timeout
+        # Generate a unique ID for each tmp file
+        if tmp_img_path is None:
+            uid = str(uuid.uuid4())
+            tmp_img_path = f"/tmp/img_{uid}.png"
+        self._tmp_img_path: str = tmp_img_path
 
     @abc.abstractmethod
     def _run_one(self, img: np.ndarray) -> int | bool:
@@ -225,6 +229,7 @@ class HuggingfaceAPI(ClassifyAPI):
             output = json.loads(response.content.decode("utf-8"))
             return output
 
+        num_tries = 0
         while True:
             output = _post_request()
             if "error" in output and "is currently loading" in output["error"]:
@@ -233,7 +238,12 @@ class HuggingfaceAPI(ClassifyAPI):
                 logger.info(
                     "%s, waiting %d seconds", output["error"], wait_time
                 )
+                if wait_time > 60 or num_tries >= 3:
+                    raise ResponseError(
+                        f"Model took too long to load ({num_tries} retries)!"
+                    )
                 time.sleep(wait_time)
+                num_tries += 1
             elif isinstance(output, list) and "label" in output[0]:
                 break
             else:

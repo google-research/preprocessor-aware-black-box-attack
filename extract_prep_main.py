@@ -19,6 +19,7 @@ import copy
 import itertools
 import logging
 import os
+import pickle
 import random
 import sys
 
@@ -27,6 +28,7 @@ import attack_prep.utils.backward_compat  # pylint: disable=unused-import
 # pylint: disable=wrong-import-order
 import huggingface_hub as hf_hub
 import numpy as np
+import requests
 import torch
 from PIL import Image
 from torch.backends import cudnn
@@ -43,8 +45,8 @@ from extract_prep.classification_api import (
     ResponseError,
     SightengineAPI,
 )
-from extract_prep.extractor import FindCrop
-from extract_prep.find_unstable_pair import FindUnstablePair
+from extract_prep.crop_extractor import FindCrop
+from extract_prep.find_unstable_pair import FindUnstablePair, UnstablePairError
 from extract_prep.resize_extractor import FindResize
 from extract_prep.utils import get_num_trials
 
@@ -118,22 +120,66 @@ def _main(config: dict[str, str | int | float]) -> None:
     # Find unstable pair from dataset
     num_queries_total: int = 0
     find_unstable_pair = FindUnstablePair(clf_pipeline)
-    unstable_pairs, num_queries = find_unstable_pair.find_unstable_pair(dataset)
+    (
+        unstable_pairs,
+        unstable_labels,
+        num_queries,
+    ) = find_unstable_pair.find_unstable_pair(dataset)
     num_queries_total += num_queries
 
     num_trials: int = get_num_trials(
         config, clf_pipeline, unstable_pairs, pval=0.01, num_noises=1000
     )
 
+    output_sizes = np.arange(200, 800)
+    np.random.shuffle(output_sizes)
+    output_sizes = [(int(size), int(size)) for size in output_sizes]
+
     # TODO: params
     # TODO: Have to guess the first preprocessor first unless they are exchandable
-    prep_params_guess = {
-        "output_size": [(224, 224), (256, 256), (299, 299), (384, 384), (512, 512)],
-        # "output_size": [(224, 224)],
-        "interp": ["bicubic", "bilinear", "nearest"],
-        # "interp": ["bilinear"],
-        "resize_lib": ["pil"],
-    }
+    if config["preprocess"] == "resize":
+        # Guess resize parameters
+        prep_params_guess = {
+            # "output_size": [
+            #     (224, 224),
+            #     (256, 256),
+            #     (299, 299),
+            #     (384, 384),
+            #     (512, 512),
+            #     (248, 248),
+            #     (288, 288),
+            # ],
+            "output_size": output_sizes,
+            # "output_size": [(224, 224)],
+            # "interp": ["bicubic", "bilinear", "nearest"],
+            "interp": ["bilinear", "bicubic"],
+            "resize_lib": ["pil"],
+        }
+    elif config["preprocess"] == "crop":
+        # FIXME: has to skip resize here
+        output_sizes = (
+            [
+                (224, 224),
+                (256, 256),
+                (299, 299),
+                (384, 384),
+                (512, 512),
+                (248, 248),
+                (288, 288),
+            ],
+        )
+        # This will be ignored by FindCrop
+        prep_params_guess = {
+            "left": [0],
+            "right": [0],
+            "top": [0],
+            "bottom": [0],
+        }
+    else:
+        raise NotImplementedError(
+            f"{config['preprocess']} preprocessor is not implemented for "
+            "extration attack!"
+        )
 
     # Create combinations of attack parameters and run attack
     keys, values = zip(*prep_params_guess.items())
@@ -149,24 +195,28 @@ def _main(config: dict[str, str | int | float]) -> None:
             param_str,
         )
         num_succeeds: int = 0
+        cur_num_queries: int = 0
         for _ in tqdm(range(num_trials)):
             is_successful, num_queries = attack.run(
                 unstable_pairs,
+                unstable_labels,
                 prep_params=prep_params,
                 num_steps=config["num_extract_perturb_steps"],
             )
-            num_queries_total += num_queries
+            cur_num_queries += num_queries
             if not is_successful:
                 logger.info(
                     "Guessed params are incorrect. Moving on to next guess..."
                 )
                 break
             num_succeeds += is_successful
+        num_queries_total += cur_num_queries
 
         logger.info(
-            "# successes: %d/%d, # queries used so far: %d",
+            "# successes: %d/%d, # queries: %d (total %d)",
             num_succeeds,
             num_trials,
+            cur_num_queries,
             num_queries_total,
         )
         results.append(
@@ -174,7 +224,7 @@ def _main(config: dict[str, str | int | float]) -> None:
                 "params": prep_params,
                 "num_succeeds": num_succeeds,
                 "num_trials": num_trials,
-                "num_queries": num_queries_total,
+                "num_queries": cur_num_queries,
             }
         )
         if config["api"] == "huggingface":
@@ -193,7 +243,7 @@ def _main(config: dict[str, str | int | float]) -> None:
         len(prep_params_list),
         candidate_params,
     )
-    return results
+    return results, candidate_params, num_queries_total
 
 
 def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
@@ -214,6 +264,7 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
     model_ids = random.sample([m.modelId for m in models], len(models))
 
     num_finished: int = 0
+    all_results = []
     for model_id in model_ids:
         url = f"https://api-inference.huggingface.co/models/{model_id}"
         logger.info(
@@ -223,17 +274,35 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
         config["model_url"] = url
 
         try:
-            _main(config)
-            num_finished += 1
-        except ResponseError as err:
+            results, candidates, num_queries = _main(config)
+        except (
+            ResponseError,
+            UnstablePairError,
+            requests.exceptions.ReadTimeout,
+        ) as err:
             logger.warning(err)
             logger.info("Skipping...")
+            continue
 
+        num_finished += 1
+        all_results.append(
+            {
+                "model_id": model_id,
+                "url": url,
+                "results": results,
+                "candidates": candidates,
+                "num_queries": num_queries,
+            }
+        )
         logger.info("=" * 20)
         if num_finished >= num_total:
             break
 
     logger.info("Finished %d/%d models.", num_finished, num_total)
+    result_path = "./results/hf_results.pkl"
+    with open(result_path, "wb") as file:
+        pickle.dump(all_results, file)
+    logger.info("Saved results to %s", result_path)
 
 
 # unknown variables:

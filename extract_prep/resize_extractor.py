@@ -97,8 +97,10 @@ class FindResize(FindPreprocessor):
     def run(
         self,
         unstable_pairs: np.ndarray,
+        before_labs: np.ndarray,
         prep_params: dict[str, int | float | str] | None = None,
         num_steps: int = 50,
+        **kwargs,
     ) -> bool:
         """Run extraction attack.
 
@@ -113,6 +115,7 @@ class FindResize(FindPreprocessor):
         Returns:
             # TODO
         """
+        _ = kwargs  # Unused
         # pylint: disable=attribute-defined-outside-init
         self._num_queries = 0
         # 256x256 linear 18%
@@ -122,8 +125,6 @@ class FindResize(FindPreprocessor):
         if prep_params is None:
             prep_params = {}
 
-        before_labs = self._classifier_api(unstable_pairs)
-        self._num_queries += len(unstable_pairs)
         if before_labs[0] == before_labs[1]:
             raise ValueError(
                 "Predicted labels of unstable pair should be different!"

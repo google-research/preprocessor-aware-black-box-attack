@@ -23,6 +23,13 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+class UnstablePairError(Exception):
+    """Exception raised when unstable pair cannot be found.
+
+    For example, when all images yeild the same class.
+    """
+
+
 class FindUnstablePair:
     """Find unstable pair used for extraction attack."""
 
@@ -83,7 +90,9 @@ class FindUnstablePair:
         mid = np.array((left + right) / 2, dtype=np.uint8)
         return mid, np.max(np.abs(left - right)) == 1
 
-    def find_unstable_pair(self, dataset: np.ndarray) -> np.ndarray:
+    def find_unstable_pair(
+        self, dataset: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, int]:
         """Find unstable pairs given a batch of samples."""
         if dataset.ndim != 4 and dataset.shape[1] == 3:
             raise ValueError(
@@ -108,9 +117,9 @@ class FindUnstablePair:
             img1, img2 = dataset
 
         if img1 is None:
-            raise ValueError(
+            raise UnstablePairError(
                 "All images in dataset are classified to the same class! "
-                "We need at least two different classes."
+                f"We need at least two different classes but got {orig_outputs}"
             )
 
         logger.info("Start L0 search...")
@@ -125,12 +134,14 @@ class FindUnstablePair:
             "Fisnished. %d queries used for Linf search.",
             self.num_queries - tmp_num_queries,
         )
-        l1, l2 = self._clf_pipeline([img1, img2])
+        labels = self._clf_pipeline([img1, img2])
         self.num_queries += 2
-        assert l1 != l2, (
-            "Two samples in unstable pairs must be classified as two different "
-            f"classes but got {l1} vs {l2}. Please select a different dataset."
-        )
+        if labels[0] == labels[1]:
+            raise UnstablePairError(
+                "Two samples in unstable pairs must be classified as two "
+                f"different classes but got {labels}. Please select a "
+                "different dataset."
+            )
         logger.info(
             "Total of %d queries used to find unstable pair.", self.num_queries
         )
@@ -144,4 +155,4 @@ class FindUnstablePair:
             (img1 != img2).sum(),
             abs_diff.max(),
         )
-        return np.array((img1, img2)), self.num_queries
+        return np.array((img1, img2)), labels, self.num_queries

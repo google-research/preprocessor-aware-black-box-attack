@@ -110,4 +110,4 @@ def get_num_trials(
         pval,
         num_trials,
     )
-    return num_trials
+    return max(1, num_trials)
