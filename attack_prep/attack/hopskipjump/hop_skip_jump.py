@@ -361,6 +361,8 @@ class HopSkipJump(MinimizationAttack):
                 with torch.enable_grad():
                     x_temp = x_advs.raw
                     x_temp.requires_grad_()
+                    # Output has to be cloned to avoid inplace operations in
+                    # cropping preprocessor
                     out = self.preprocess(x_temp).clone()
                 x_advs = ep.astensor(out.detach())
             else:
