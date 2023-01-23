@@ -215,6 +215,7 @@ class HopSkipJump(MinimizationAttack):
             if self.stepsize_search == "geometric_progression":
                 # find step size.
                 epsilons = distances / math.sqrt(step + 1)
+                old_epsilons = 1e9
 
                 while True:
                     x_advs_proposals = ep.clip(
@@ -226,6 +227,13 @@ class HopSkipJump(MinimizationAttack):
                     # EDIT: is_adversarial
                     num_queries += 1
                     epsilons = ep.where(success, epsilons, epsilons / 2.0)
+                    # Numerical precision
+                    if ep.all(epsilons == old_epsilons):
+                        epsilons = ep.where(
+                            success, epsilons, ep.zeros_like(epsilons)
+                        )
+                        break
+                    old_epsilons = epsilons
 
                     if ep.all(success):
                         break
@@ -361,10 +369,15 @@ class HopSkipJump(MinimizationAttack):
                 with torch.enable_grad():
                     x_temp = x_advs.raw
                     x_temp.requires_grad_()
-                    out = self.preprocess(x_temp)
+                    # Output has to be cloned to avoid inplace operations in
+                    # cropping preprocessor
+                    out = self.preprocess(x_temp).clone()
                 x_advs = ep.astensor(out.detach())
             else:
                 x_advs = ep.astensor(self.preprocess(x_advs.raw))
+        else:
+            # This is needed as x_advs will be modified in-place below
+            x_advs = ep.astensor(x_advs.raw.clone())
 
         # Should rv be re-normalized here? It is not in the original
         # implementation, but it is fixed in later commit:
