@@ -306,6 +306,7 @@ def _run_hf_exp(base_config: dict[str, int | float | str]) -> list[str]:
         )
         config = copy.deepcopy(base_config)
         config["model_url"] = url
+        config["seed"] = config["seed"] + 1
 
         try:
             results, candidates, num_queries = _main(config)
