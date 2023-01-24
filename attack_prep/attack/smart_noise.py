@@ -35,15 +35,15 @@ class SmartNoise(object):
         noise = np.zeros((n,) + self.hr_shape, dtype=_ART_NUMPY_DTYPE)
         if len(x.shape) == 4:
             x = x.squeeze(0)
-        x_hr = torch.as_tensor(x[None]).cuda()
+        x_hr = torch.as_tensor(x[None], device="cuda", dtype=torch.float32)
 
         # generate n noise
         for i in range(n):
             # generate noise at LR space
-            delta_lr = torch.randn(1, *self.lr_shape).cuda()
+            delta_lr = torch.randn(1, *self.lr_shape, device="cuda")
 
             # optimizing variable: noise at HR space
-            delta_hr = torch.zeros_like(x_hr).requires_grad_()
+            delta_hr = torch.zeros_like(x_hr, requires_grad=True)
 
             # compute perturbed HR and LR images
             perturbed_hr = x_hr + delta_hr
