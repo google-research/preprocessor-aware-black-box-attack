@@ -380,8 +380,8 @@ class QEBA(Attack):
 
         # EDIT: apply preprocess if specified
         if self.preprocess is not None:
-            perturbed = self.preprocess(perturbed)
-            temp_sample = sample.unsqueeze(0)
+            perturbed = self.preprocess(perturbed.float())
+            temp_sample = sample.unsqueeze(0).float()
             if self.prep_backprop:
                 with torch.enable_grad():
                     temp_sample.requires_grad_()
