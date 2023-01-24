@@ -55,7 +55,11 @@ def get_num_trials(
     pval: float = 0.05,
     num_noises: int = 1000,
 ) -> int:
-    """Get number of trials for the extraction attack."""
+    """Get number of trials for the extraction attack.
+
+    # TODO(enhancement): We can improve this estimates by also randomly choose
+    # preprocessor params.
+    """
     if config["num_extract_trials"] is not None:
         logger.info("Using given num_trials: %d", config["num_extract_trials"])
         return config["num_extract_trials"]

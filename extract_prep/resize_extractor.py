@@ -118,10 +118,6 @@ class FindResize(FindPreprocessor):
         _ = kwargs  # Unused
         # pylint: disable=attribute-defined-outside-init
         self._num_queries = 0
-        # 256x256 linear 18%
-        # 256x256 bicubic 24%
-        # 299x299 linear 20%
-        # 299x299 bicubic 38%
         if prep_params is None:
             prep_params = {}
 

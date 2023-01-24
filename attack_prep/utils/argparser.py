@@ -256,4 +256,5 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-hf-models", default=1, type=int)
     parser.add_argument("--num-extract-trials", default=None, type=int)
+    parser.add_argument("--extract-pval", default=0.01, type=float)
     return parser.parse_args()

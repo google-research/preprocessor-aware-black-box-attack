@@ -124,7 +124,7 @@ class FindCrop(FindPreprocessor):
 
         # Binary search left crop
         left = self._binary_search(unstable_pairs, before, border="left")
-        logger.info("Found left crop size of %3d", left)
+        logger.info("Found left crop size of %d", left)
         if left == 0:
             logger.warning("No cropping found. Returning...")
             return False, self._num_queries
@@ -143,7 +143,7 @@ class FindCrop(FindPreprocessor):
             )
             if matched:
                 found_right = True
-                logger.info("Found right crop size of %3d", right)
+                logger.info("Found right crop size of %d", right)
                 break
         # If there's no match, binary search right crop
         if not found_right:

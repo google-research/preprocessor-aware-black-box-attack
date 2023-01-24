@@ -47,6 +47,7 @@ class ClassifyAPI:
         api_secret: str | None = None,
         tmp_img_path: str | None = None,
         timeout: int = _TIMEOUT,
+        jpeg_quality: int | None = None,
         **kwargs,
     ) -> None:
         """Initialize ClassifyAPI.
@@ -57,20 +58,30 @@ class ClassifyAPI:
             tmp_img_path: Path to temporarily save image before sending it via
                 POST request. Defaults to _TMP_IMG_PATH.
             timeout: Timeout for online API. Defaults to _TIMEOUT.
+            jpeg_quality: JPEG quality for temporary image. Defaults to None.
         """
         _ = kwargs  # Unused
         self._api_key: str | None = api_key
         self._api_secret: str | None = api_secret
         self._timeout: int = timeout
+        self._jpeg_quality: int | None = jpeg_quality
         # Generate a unique ID for each tmp file
+        ext = ".jpg" if jpeg_quality is not None else ".png"
         if tmp_img_path is None:
             uid = str(uuid.uuid4())
-            tmp_img_path = f"/tmp/img_{uid}.png"
+            tmp_img_path = f"/tmp/img_{uid}.{ext}"
         self._tmp_img_path: str = tmp_img_path
 
     @abc.abstractmethod
     def _run_one(self, img: np.ndarray) -> int | bool:
         pass
+
+    def _tmp_save_img(self, img: torch.Tensor | np.ndarray) -> None:
+        if isinstance(img, torch.Tensor):
+            img = img.cpu().numpy()
+        img = np.transpose(img, (1, 2, 0))
+        pil_img = Image.fromarray(np.array(img, dtype=np.uint8))
+        pil_img.save(self._tmp_img_path, quality=self._jpeg_quality)
 
     def __call__(self, images: np.ndarray | list[np.ndarray]) -> np.ndarray:
         """Run the classification pipeline on a batch of images."""
@@ -83,10 +94,7 @@ class ImaggaAPI(ClassifyAPI):
     """Imagga NSFW (beta) API."""
 
     def _run_one(self, img: np.ndarray | torch.Tensor) -> int | bool:
-        if isinstance(img, torch.Tensor):
-            img = img.cpu().numpy()
-        img = np.transpose(img, (1, 2, 0))
-        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+        self._tmp_save_img(img)
         response = requests.post(
             "https://api.imagga.com/v2/categories/nsfw_beta",
             auth=(self._api_key, self._api_secret),
@@ -109,10 +117,7 @@ class SightengineAPI(ClassifyAPI):
     """Sightengine nudity API."""
 
     def _run_one(self, img: np.ndarray) -> int | bool:
-        if isinstance(img, torch.Tensor):
-            img = img.cpu().numpy()
-        img = np.transpose(img, (1, 2, 0))
-        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+        self._tmp_save_img(img)
 
         params = {
             "models": "nudity-2.0",
@@ -148,10 +153,7 @@ class GoogleAPI(ClassifyAPI):
     """Google Cloud Vision Safe Search API."""
 
     def _run_one(self, img: np.ndarray) -> int | bool:
-        if isinstance(img, torch.Tensor):
-            img = img.cpu().numpy()
-        img = np.transpose(img, (1, 2, 0))
-        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+        self._tmp_save_img(img)
 
         with io.open(self._tmp_img_path, "rb") as image_file:
             content = image_file.read()
@@ -210,10 +212,7 @@ class HuggingfaceAPI(ClassifyAPI):
         self._model_url: str = model_url
 
     def _run_one(self, img: np.ndarray) -> str:
-        if isinstance(img, torch.Tensor):
-            img = img.cpu().numpy()
-        img = np.transpose(img, (1, 2, 0))
-        Image.fromarray(np.array(img, dtype=np.uint8)).save(self._tmp_img_path)
+        self._tmp_save_img(img)
 
         with open(self._tmp_img_path, "rb") as file:
             data = file.read()

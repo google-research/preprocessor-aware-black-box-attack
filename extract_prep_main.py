@@ -48,6 +48,7 @@ from extract_prep.classification_api import (
 from extract_prep.crop_extractor import FindCrop
 from extract_prep.find_unstable_pair import FindUnstablePair, UnstablePairError
 from extract_prep.resize_extractor import FindResize
+from extract_prep.jpeg_extractor import FindJpeg
 from extract_prep.utils import get_num_trials
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ def _main(config: dict[str, str | int | float]) -> None:
     )
 
     # NOTE: Specify your own set initial images and classification API here
+    logger.info("Setting up %s classification API...", clf_api)
     clf_pipeline: ClassifyAPI
     if clf_api == "local":
         prep_model: PreprocessModel
@@ -82,8 +84,18 @@ def _main(config: dict[str, str | int | float]) -> None:
         clf_pipeline = GoogleAPI()
         filenames = ["images/lena.png", "images/ILSVRC2012_val_00000293.jpg"]
     elif clf_api == "huggingface":
+        # TODO
+        # clf_pipeline = HuggingfaceAPI(
+        #     api_key=config["api_key"], model_url=config["model_url"]
+        # )
+        jpeg_quality = None
+        if config["preprocess"] == "jpeg":
+            jpeg_quality = random.randint(50, 100)
+            logger.info("Using JPEG quality %d", jpeg_quality)
         clf_pipeline = HuggingfaceAPI(
-            api_key=config["api_key"], model_url=config["model_url"]
+            api_key=config["api_key"],
+            model_url=config["model_url"],
+            jpeg_quality=jpeg_quality,
         )
         filenames = ["images/lena.png", "images/ILSVRC2012_val_00000293.jpg"]
     elif clf_api == "imagga":
@@ -113,11 +125,13 @@ def _main(config: dict[str, str | int | float]) -> None:
     attack_fn = {
         "resize": FindResize,
         "crop": FindCrop,
+        "jpeg": FindJpeg,
     }[config["preprocess"]]
     attack = attack_fn(clf_pipeline, init_size=orig_size)
     dataset = attack.init(dataset)
 
     # Find unstable pair from dataset
+    logger.info("Finding an unstable pair for this API...")
     num_queries_total: int = 0
     find_unstable_pair = FindUnstablePair(clf_pipeline)
     (
@@ -127,18 +141,54 @@ def _main(config: dict[str, str | int | float]) -> None:
     ) = find_unstable_pair.find_unstable_pair(dataset)
     num_queries_total += num_queries
 
-    num_trials: int = get_num_trials(
-        config, clf_pipeline, unstable_pairs, pval=0.01, num_noises=1000
-    )
+    if config["preprocess"] == "crop":
+        logger.info("Extracting crop parameters...")
+        prep_params_list = [None]
+        num_trials_crop = 5
+        # output_sizes = (
+        #     [
+        #         (224, 224),
+        #         (256, 256),
+        #         (299, 299),
+        #         (384, 384),
+        #         (512, 512),
+        #         (248, 248),
+        #         (288, 288),
+        #     ],
+        # )
+        candidate_params, num_queries = attack.run(
+            unstable_pairs,
+            unstable_labels,
+            num_trials=num_trials_crop,
+        )
+        num_queries_total += num_queries
+        results = [
+            {
+                "params": candidate_params,
+                "num_trials": num_trials_crop,
+                "num_queries": num_queries,
+            }
+        ]
+        logger.info("Total number of queries: %d", num_queries_total)
+        logger.info("Found cropping params: %s", candidate_params)
+        return results, candidate_params, num_queries_total
 
-    output_sizes = np.arange(200, 800)
-    np.random.shuffle(output_sizes)
-    output_sizes = [(int(size), int(size)) for size in output_sizes]
+    num_trials: int = get_num_trials(
+        config,
+        clf_pipeline,
+        unstable_pairs,
+        pval=config["extract_pval"],
+        num_noises=1000,
+    )
 
     # TODO: params
     # TODO: Have to guess the first preprocessor first unless they are exchandable
     if config["preprocess"] == "resize":
         # Guess resize parameters
+        output_sizes = np.arange(200, 800)
+        np.random.shuffle(output_sizes)
+        output_sizes = [(int(size), int(size)) for size in output_sizes]
+
         prep_params_guess = {
             # "output_size": [
             #     (224, 224),
@@ -155,25 +205,9 @@ def _main(config: dict[str, str | int | float]) -> None:
             "interp": ["bilinear", "bicubic"],
             "resize_lib": ["pil"],
         }
-    elif config["preprocess"] == "crop":
-        # FIXME: has to skip resize here
-        output_sizes = (
-            [
-                (224, 224),
-                (256, 256),
-                (299, 299),
-                (384, 384),
-                (512, 512),
-                (248, 248),
-                (288, 288),
-            ],
-        )
-        # This will be ignored by FindCrop
+    elif config["preprocess"] == "jpeg":
         prep_params_guess = {
-            "left": [0],
-            "right": [0],
-            "top": [0],
-            "bottom": [0],
+            "quality": np.arange(50, 101, dtype=np.int32).tolist()
         }
     else:
         raise NotImplementedError(
