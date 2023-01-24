@@ -30,7 +30,7 @@ class Sequential(Preprocessor):
         for prep in preps:
             temp_params = copy.deepcopy(params)
             input_size = (
-                prep_list[-1].output_size if len(prep_list) > 0 else None
+                prep_list[-1].output_size if prep_list else params["orig_size"]
             )
             temp_params["preprocess"] = prep
             temp_params["orig_size"] = input_size
