@@ -16,13 +16,21 @@
 from __future__ import annotations
 
 import copy
+from typing import Any
 
 from attack_prep.preprocessor.base import Preprocessor
 from attack_prep.preprocessor.util import ApplySequence, setup_preprocessor
 
 
 class Sequential(Preprocessor):
-    def __init__(self, params, **kwargs):
+    """Sequentially apply a list of preprocessors."""
+
+    def __init__(self, params: dict[str, Any], **kwargs) -> None:
+        """Initialize sequence of preprocessors.
+
+        Args:
+            params: Config parameters.
+        """
         super().__init__(params, **kwargs)
         # Get list of preprocessings from params
         preps = params["preprocess"].split("-")

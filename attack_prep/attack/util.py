@@ -286,7 +286,7 @@ def _find_nearest_preimage(
     for _ in range(num_lambda_steps):
 
         lmbda = (lmbda_lo + lmbda_hi) / 2
-        x_pre = x_init.clone() + torch.randn_like(x_init) * 1e-5
+        x_pre = x_init + torch.randn_like(x_init) * 1e-5
         x_pre.clamp_(1e-6, 1 - 1e-6)
         a_pre = _to_attack_space(x_pre, 0, 1)
         a_pre.requires_grad_()
@@ -298,7 +298,7 @@ def _find_nearest_preimage(
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             factor=0.1,
-            patience=int(num_opt_steps / 100),
+            patience=int(num_opt_steps / 20),
             threshold=1e-3,
             verbose=verbose,
             eps=_EPS,
@@ -317,7 +317,7 @@ def _find_nearest_preimage(
                 dist_prep *= scale_dim_z
                 # This should be sum because we want the learning rate to
                 # effectively scale with batch size
-                loss = (dist_orig + lmbda**2 * dist_prep).sum()
+                loss = (dist_orig + lmbda * dist_prep).sum()
                 loss.backward()
                 optimizer.step()
                 lr_scheduler.step(loss)
@@ -364,22 +364,26 @@ def _find_nearest_preimage(
 
         # Update preimages that are successful and have small perturbation
         success_idx |= cur_success_idx
-        dist = dist_prep if criterion == "dist_to_orig" else dist_orig
+        if criterion == "dist_to_orig":
+            dist = dist_prep / scale_dim_z
+        else:
+            dist = dist_orig / scale_dim_x
+        dist.sqrt_()
         better_dist = cur_success_idx & (dist.cpu() < best_dist)
         best_dist[better_dist] = dist[better_dist].detach().cpu()
         best_x_pre[better_dist] = x_pre[better_dist]
         prev_lmbda = lmbda
         if verbose:
             print(
-                "  Distortion (L2 square) in original space: ",
+                "  Distortion (L2 square) in original space:",
                 dist_orig.detach().cpu().numpy(),
             )
             print(
-                "  Reconstruction error (L2 square) in processed space: ",
+                "  Reconstruction error (L2 square) in processed space:",
                 dist_prep.detach().cpu().numpy(),
             )
             print(
-                "  L-inf distance in processed space: ",
+                "  L-inf distance in processed space:",
                 (preprocess(x_pre) - z_adv)
                 .reshape(batch_size, -1)
                 .abs()
@@ -387,8 +391,8 @@ def _find_nearest_preimage(
                 .cpu()
                 .numpy(),
             )
-            print("  lambda: ", lmbda.cpu().numpy())
-            print("  cur_success_idx: ", cur_success_idx.cpu().numpy())
+            print("  lambda:", lmbda.cpu().numpy())
+            print("  cur_success_idx:", cur_success_idx.cpu().numpy())
 
         if num_loss_inc > 0:
             # If loss has increased, then reduce lr by a factor of 10
@@ -396,6 +400,7 @@ def _find_nearest_preimage(
 
     if verbose:
         print(f"=> Final pre-image success: {success_idx.sum()}/{batch_size}")
+        print(f"=> Final best pre-image distortion: {best_dist.numpy()}")
     model.to(orig_dtype)
     return best_x_pre.detach().to(orig_dtype), success_idx
 

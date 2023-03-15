@@ -69,7 +69,7 @@ def _main(config: dict[str, str | int | float]) -> None:
     # Setting deterministic must be set to True for neural-based preprocessor.
     # Othwerwise, the preprocessor itself may be non-deterministic.
     cudnn.deterministic = any(
-        prep in config["preprocess"] for prep in ("neural", "sr")
+        prep in config["preprocess"] for prep in ("neural", "sr", "denoise")
     )
 
     # NOTE: Specify your own set initial images and classification API here

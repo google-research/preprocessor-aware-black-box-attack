@@ -225,7 +225,10 @@ class HuggingfaceAPI(ClassifyAPI):
                 data=data,
                 timeout=self._timeout,
             )
-            output = json.loads(response.content.decode("utf-8"))
+            try:
+                output = json.loads(response.content.decode("utf-8"))
+            except json.JSONDecodeError as err:
+                raise ResponseError(str(err)) from err
             return output
 
         num_tries = 0

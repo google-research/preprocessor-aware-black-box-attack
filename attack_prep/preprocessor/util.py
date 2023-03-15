@@ -83,7 +83,7 @@ class ApplySequence(nn.Module):
             preprocesses: List of preprocessors to apply in order.
         """
         super().__init__()
-        self.preprocesses: list[nn.Module] = preprocesses
+        self.preprocesses: nn.ModuleList = nn.ModuleList(preprocesses)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Preprocess."""
