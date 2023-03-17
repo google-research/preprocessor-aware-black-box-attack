@@ -61,19 +61,23 @@ class QEBA(Attack):
         self.external_dtype = None
         self.rv_generator = load_pgen(args["qeba_subspace"])
         self.prep_backprop = prep_backprop
+        self.targeted = args["targeted"]
         if prep_backprop:
             assert preprocess is not None
         self.smart_noise = smart_noise
 
     def run(self, imgs, labels, tgt=None, **kwargs):
-        if tgt is None:
-            raise RuntimeError(
-                "QEBA is a targeted attack. tgt argument must be specified."
-            )
         x_adv = imgs.clone()
+        if tgt is None:
+            raise ValueError(
+                "QEBA requires tgt images and labels even for untargeted attack"
+                " as it needs to initialize from an image of another class."
+            )
         src_images, src_labels = tgt
         for i, _ in enumerate(src_images):
-            x_adv[i] = self._attack(imgs[i], src_images[i], src_labels[i])
+            x_adv[i] = self._attack(
+                imgs[i], labels[i], src_images[i], src_labels[i]
+            )
         return x_adv
 
     def _gen_random_basis(self, N, device):
@@ -87,7 +91,7 @@ class QEBA(Attack):
             basis = self._gen_random_basis(N, sample.device)
         return basis.to(self.internal_dtype)
 
-    def _attack(self, img, src_img, src_label):
+    def _attack(self, img, label, src_img, src_label):
         self.external_dtype = img.dtype
         self.logger = []
 
@@ -125,8 +129,10 @@ class QEBA(Attack):
                     self.batch_size * j : self.batch_size * (j + 1)
                 ]
                 current_batch = current_batch.to(self.external_dtype)
+                # EDIT: Add untargeted attack
+                y_pred = self.model(current_batch.clamp(0, 1)).argmax(1)
                 outs[self.batch_size * j : self.batch_size * (j + 1)] = (
-                    self.model(current_batch.clamp(0, 1)).argmax(1) == src_label
+                    y_pred == src_label if self.targeted else y_pred != label
                 )
             self.num_query += len(x)
             return outs

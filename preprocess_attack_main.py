@@ -198,7 +198,7 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
     validloader: _DataLoader = get_dataloader(config)
     # Create another dataloader for targeted attacks
     targeted_dataloader: _DataLoader | None = None
-    if targeted:
+    if targeted or config["attack"] == "qeba":
         print("=> Creating the second dataloader for targeted attack...")
         copy_args = deepcopy(config)
         copy_args["batch_size"] = 1
@@ -260,7 +260,7 @@ def _main(config: dict[str, str | float | int], savename: str) -> None:
             atk_images.clamp_(0, 1)
 
             tgt_data: tuple[torch.Tensor, torch.Tensor] | None = None
-            if targeted:
+            if targeted or config["attack"] == "qeba":
                 # Randomly select target samples for targeted attack
                 tgt_data = select_targets(model, targeted_dataloader, labels)
                 tgt_data = (prepare_atk_img(tgt_data[0]), tgt_data[1])
