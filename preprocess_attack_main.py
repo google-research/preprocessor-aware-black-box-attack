@@ -388,6 +388,7 @@ def run_one_setting(config: dict[str, str | int | float]) -> None:
             atk_params += f"-{config[key]}"
 
     tokens = [
+        config["model_name"],
         f'{config["preprocess"]}{prep_params}',
         f'orig{config["orig_size"]}',
         f'eps{config["epsilon"]}',
