@@ -48,6 +48,7 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
     # pylint: disable=import-outside-toplevel
     from attack_prep.preprocessor.crop import Crop
     from attack_prep.preprocessor.denoise import Denoiser
+    from attack_prep.preprocessor.gauss_blur import GaussianBlur
     from attack_prep.preprocessor.jpeg import JPEG
     from attack_prep.preprocessor.neural import NeuralCompressor
     from attack_prep.preprocessor.quantize import Quantize
@@ -67,6 +68,7 @@ def setup_preprocessor(config: dict[str, Any]) -> Preprocessor:
             "neural": NeuralCompressor,
             "sr": SuperResolution,
             "denoise": Denoiser,
+            "blur": GaussianBlur,
         }[config["preprocess"]]
 
     preprocess = preprocessor_fn(config, input_size=config["orig_size"])
