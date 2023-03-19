@@ -176,6 +176,9 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Base path to config files of MMEditing.",
     )
+    # Gaussian blur
+    parser.add_argument("--blur-sigma", default=1.0, type=float)
+    parser.add_argument("--blur-kernel-size", default=5, type=int)
     # =============================== Attack ================================ #
     parser.add_argument("--max-iter", default=1000, type=int)
     # RayS
